@@ -24,7 +24,7 @@ Ensure you have Socket.IO client included in your project:
 import ConnectionChecker from 'j-queue-sdk-web';
 
 ConnectionChecker.init({
-  url: 'https://dev-console.adshub.kr/ws',
+  url: 'wss://demo-websocket.example.com',
   socketConfig: {
     transports: ['websocket'],
     reconnectionAttempts: 3
@@ -70,7 +70,7 @@ Or, in a browser environment:
 <script src="node_modules/j-queue-sdk-web/dist/j-queue-sdk-web.js"></script>
 <script>
   ConnectionChecker.init({
-    url: 'https://dev-console.adshub.kr/ws',
+    url: 'wss://demo-websocket.example.com',
     popupConfig: {
       style: 'background: rgba(0, 0, 0, 0.7); ...',
       content: (position) => `<div>Position: ${position}</div>`
@@ -81,7 +81,7 @@ Or, in a browser environment:
 
 ## Configuration Options
 
-- `url` (string): WebSocket server URL (default: `https://dev-console.adshub.kr/ws`).
+- `url` (string): WebSocket server URL (default: `wss://demo-websocket.example.com`).
 - `socketConfig` (object): Socket.IO configuration options (default: `{ transports: ['websocket'], reconnectionAttempts: 3 }`).
 - `popupConfig` (object):
   - `style` (string): Custom CSS for the popup.

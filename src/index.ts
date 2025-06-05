@@ -39,7 +39,7 @@ interface ConnectionCheckerResult {
  * @returns Connection checker methods
  */
 function initConnectionChecker(options: ConnectionCheckerOptions = {}): ConnectionCheckerResult | { error: string } {
-  const defaultUrl = 'https://dev-console.adshub.kr/ws';
+  const defaultUrl = 'wss://demo-websocket.example.com';
   const defaultPopupConfig: any = { // PopupConfig
     style: `
       position: fixed;
