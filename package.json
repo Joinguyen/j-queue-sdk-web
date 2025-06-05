@@ -28,10 +28,10 @@
     },
     "repository": {
       "type": "git",
-      "url": "https://github.com/yourusername/j-queue-sdk-web.git"
+      "url": "https://github.com/Joinguyen/j-queue-sdk-web.git"
     },
     "bugs": {
-      "url": "https://github.com/yourusername/j-queue-sdk-web/issues"
+      "url": "https://github.com/Joinguyen/j-queue-sdk-web/issues"
     },
-    "homepage": "https://github.com/yourusername/j-queue-sdk-web#readme"
+    "homepage": "https://github.com/Joinguyen/j-queue-sdk-web#readme"
   }
