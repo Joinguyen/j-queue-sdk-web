@@ -1,4 +1,6 @@
 node_modules/
 tests/
-.git
-.gitignore
+*.log
+webpack.config.js
+jest.config.js
+tsconfig.json
