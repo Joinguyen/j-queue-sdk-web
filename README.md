@@ -1,4 +1,4 @@
-# j-queue-sdk-web
+# @joi.nguyen/j-queue-sdk-web
 
 A TypeScript package to check WebSocket connection status and control web access by displaying a customizable full-screen popup when access is denied.
 
@@ -7,10 +7,16 @@ A TypeScript package to check WebSocket connection status and control web access
 Install the package via npm:
 
 ```bash
-npm install j-queue-sdk-web
+npm install @joi.nguyen/j-queue-sdk-web
 ```
 
 Ensure you have Socket.IO client included in your project:
+
+```bash
+npm install socket.io-client
+```
+
+For browser environments, include the Socket.IO client script:
 
 ```html
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
@@ -18,10 +24,12 @@ Ensure you have Socket.IO client included in your project:
 
 ## Usage
 
+### Usage in JavaScript/TypeScript
+
 1. Import and initialize the package:
 
 ```typescript
-import ConnectionChecker from 'j-queue-sdk-web';
+import ConnectionChecker from '@joi.nguyen/j-queue-sdk-web';
 
 ConnectionChecker.init({
   url: 'wss://demo-websocket.example.com',
@@ -67,7 +75,8 @@ ConnectionChecker.init({
 Or, in a browser environment:
 
 ```html
-<script src="node_modules/j-queue-sdk-web/dist/j-queue-sdk-web.js"></script>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="node_modules/@joi.nguyen/j-queue-sdk-web/dist/connection-checker.js"></script>
 <script>
   ConnectionChecker.init({
     url: 'wss://demo-websocket.example.com',
@@ -78,6 +87,99 @@ Or, in a browser environment:
   });
 </script>
 ```
+
+### Usage in ReactJS
+
+To use `@joi.nguyen/j-queue-sdk-web` in a ReactJS application, initialize the WebSocket connection in a component using the `useEffect` hook to manage the connection lifecycle. Below is an example:
+
+1. Install the package and dependencies in your React project:
+
+```bash
+npm install @joi.nguyen/j-queue-sdk-web socket.io-client
+```
+
+2. Create a component to initialize the WebSocket connection:
+
+```tsx
+import { useEffect } from 'react';
+import ConnectionChecker from '@joi.nguyen/j-queue-sdk-web';
+
+const WebSocketComponent = () => {
+  useEffect(() => {
+    // Initialize WebSocket connection
+    const connection = ConnectionChecker.init({
+      url: 'wss://demo-websocket.example.com',
+      socketConfig: {
+        transports: ['websocket'],
+        reconnectionAttempts: 3
+      },
+      popupConfig: {
+        style: `
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: rgba(0, 0, 0, 0.9);
+          z-index: 10000;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          color: #fff;
+          font-family: Helvetica, sans-serif;
+          font-size: 28px;
+        `,
+        content: (position: number | undefined) => `
+          <div>
+            <h1>Access Restricted</h1>
+            <p>Position: ${position ?? 'N/A'}</p>
+            <p>Please wait...</p>
+          </div>
+        `
+      },
+      customEvents: {
+        'custom-event': (data, { createPopup }) => {
+          console.log('Custom event received:', data);
+          if (data.message) {
+            createPopup(data.message);
+          }
+        }
+      }
+    });
+
+    // Cleanup on component unmount
+    return () => {
+      connection.disconnect();
+    };
+  }, []);
+
+  return <div>Your React App Content</div>;
+};
+
+export default WebSocketComponent;
+```
+
+3. Use the component in your app:
+
+```tsx
+import WebSocketComponent from './WebSocketComponent';
+
+function App() {
+  return (
+    <div>
+      <h1>My React App</h1>
+      <WebSocketComponent />
+    </div>
+  );
+}
+
+export default App;
+```
+
+#### Notes for ReactJS Usage:
+- The `useEffect` hook ensures the WebSocket connection is initialized when the component mounts and disconnected when it unmounts, preventing memory leaks.
+- Customize the `popupConfig` and `customEvents` as needed to fit your application's UI and requirements.
+- Ensure the WebSocket server at `wss://demo-websocket.example.com` supports the required events (`connection-status`, `position-update`) and data format `{uuid: string, position: number, allow: boolean}`.
 
 ## Configuration Options
 
@@ -106,7 +208,7 @@ Or, in a browser environment:
 npm run build
 ```
 
-This will compile TypeScript to JavaScript and bundle the package into `dist/j-queue-sdk-web.js` using Webpack.
+This will compile TypeScript to JavaScript and bundle the package into `dist/connection-checker.js` using Webpack.
 
 ### Test
 
