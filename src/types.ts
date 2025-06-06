@@ -15,6 +15,7 @@ export interface CustomEventUtils {
 export interface InitConfig {
     url: string;
     socketConfig?: Record<string, any>;
+    extraHeaders?: Record<string, any>;
     popupConfig?: PopupConfig;
     customEvents?: {
         [eventName: string]: (data: any, utils: CustomEventUtils) => void;
