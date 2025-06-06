@@ -1,25 +1,5 @@
 import { io, Socket } from 'socket.io-client';
-
-interface PopupConfig {
-  style?: string;
-  content?: string | ((position?: number) => string);
-}
-
-interface CustomEventUtils {
-  createPopup: (html: string) => void;
-  removePopup: () => void;
-  preventNavigation: () => void;
-  allowNavigation: () => void;
-}
-
-interface InitConfig {
-  url: string;
-  socketConfig?: Record<string, any>;
-  popupConfig?: PopupConfig;
-  customEvents?: {
-    [eventName: string]: (data: any, utils: CustomEventUtils) => void;
-  };
-}
+import { InitConfig, CustomEventUtils } from './types';
 
 class ConnectionJQueueSdkWeb {
   private static socket: Socket | null = null;
@@ -92,12 +72,13 @@ class ConnectionJQueueSdkWeb {
 
     Object.entries(customEvents).forEach(([eventName, handler]) => {
       socket.on(eventName, (data: any) => {
-        handler(data, {
+        const utils: CustomEventUtils = {
           createPopup,
           removePopup,
           preventNavigation,
-          allowNavigation
-        });
+          allowNavigation,
+        };
+        handler(data, utils);
       });
     });
 
@@ -123,3 +104,4 @@ export default ConnectionJQueueSdkWeb;
 if (typeof window !== 'undefined') {
   (window as any).ConnectionJQueueSdkWeb = ConnectionJQueueSdkWeb;
 }
+export type { InitConfig, PopupConfig, CustomEventUtils } from './types';
