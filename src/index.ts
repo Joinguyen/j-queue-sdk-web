@@ -20,14 +20,14 @@ interface CustomEventHandlers {
   }) => void;
 }
 
-interface ConnectionCheckerOptions {
+interface ConnectionJQueueSdkWebOptions {
   url?: string;
   socketConfig?: any; // Socket.Options
   popupConfig?: PopupConfig;
   customEvents?: CustomEventHandlers;
 }
 
-interface ConnectionCheckerResult {
+interface ConnectionJQueueSdkWebResult {
   disconnect: () => void;
   reconnect: () => void;
   socket: Socket;
@@ -38,7 +38,7 @@ interface ConnectionCheckerResult {
  * @param options Configuration options
  * @returns Connection checker methods
  */
-function initConnectionChecker(options: ConnectionCheckerOptions = {}): ConnectionCheckerResult | { error: string } {
+function initConnectionJQueueSdkWeb(options: ConnectionJQueueSdkWebOptions = {}): ConnectionJQueueSdkWebResult | { error: string } {
   const defaultUrl = 'wss://demo-websocket.example.com';
   const defaultPopupConfig: any = { // PopupConfig
     style: `
@@ -186,5 +186,5 @@ function initConnectionChecker(options: ConnectionCheckerOptions = {}): Connecti
 }
 
 export default {
-  init: initConnectionChecker
+  init: initConnectionJQueueSdkWeb
 };

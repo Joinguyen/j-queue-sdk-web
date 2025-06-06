@@ -1,4 +1,4 @@
-import ConnectionChecker from '../src/index';
+import ConnectionJQueueSdkWeb from '../src/index';
 
 // Mock socket.io-client
 jest.mock('socket.io-client', () => ({
@@ -9,7 +9,7 @@ jest.mock('socket.io-client', () => ({
     }))
 }));
 
-describe('ConnectionChecker', () => {
+describe('ConnectionJQueueSdkWeb', () => {
     beforeEach(() => {
         document.body.innerHTML = '';
         jest.spyOn(console, 'error').mockImplementation(() => { });
@@ -20,7 +20,7 @@ describe('ConnectionChecker', () => {
     test('should return error if Socket.IO is not available', () => {
         // Temporarily override the mock to simulate io undefined
         jest.mock('socket.io-client', () => ({}), { virtual: true });
-        const result = ConnectionChecker.init();
+        const result = ConnectionJQueueSdkWeb.init();
         expect(result).toEqual({ error: 'Socket.IO not found' });
         expect(console.error).toHaveBeenCalledWith('Socket.IO client is required for j-queue-sdk-web');
     });
@@ -34,7 +34,7 @@ describe('ConnectionChecker', () => {
                 connect: jest.fn()
             }))
         }), { virtual: true });
-        const result = ConnectionChecker.init({ url: 'wss://test-server' });
+        const result = ConnectionJQueueSdkWeb.init({ url: 'wss://test-server' });
         expect(result).toHaveProperty('disconnect');
         expect(result).toHaveProperty('reconnect');
         expect(result).toHaveProperty('socket');

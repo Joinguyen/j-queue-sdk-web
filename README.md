@@ -29,9 +29,9 @@ For browser environments, include the Socket.IO client script:
 1. Import and initialize the package:
 
 ```typescript
-import ConnectionChecker from '@joi.nguyen/j-queue-sdk-web';
+import ConnectionJQueueSdkWeb from '@joi.nguyen/j-queue-sdk-web';
 
-ConnectionChecker.init({
+ConnectionJQueueSdkWeb.init({
   url: 'wss://demo-websocket.example.com',
   socketConfig: {
     transports: ['websocket'],
@@ -78,7 +78,7 @@ Or, in a browser environment:
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="node_modules/@joi.nguyen/j-queue-sdk-web/dist/connection-checker.js"></script>
 <script>
-  ConnectionChecker.init({
+  ConnectionJQueueSdkWeb.init({
     url: 'wss://demo-websocket.example.com',
     popupConfig: {
       style: 'background: rgba(0, 0, 0, 0.7); ...',
@@ -102,12 +102,12 @@ npm install @joi.nguyen/j-queue-sdk-web socket.io-client
 
 ```tsx
 import { useEffect } from 'react';
-import ConnectionChecker from '@joi.nguyen/j-queue-sdk-web';
+import ConnectionJQueueSdkWeb from '@joi.nguyen/j-queue-sdk-web';
 
 const WebSocketComponent = () => {
   useEffect(() => {
     // Initialize WebSocket connection
-    const connection = ConnectionChecker.init({
+    const connection = ConnectionJQueueSdkWeb.init({
       url: 'wss://demo-websocket.example.com',
       socketConfig: {
         transports: ['websocket'],

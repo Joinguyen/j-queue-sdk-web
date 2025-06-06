@@ -5,7 +5,7 @@ module.exports = {
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'j-queue-sdk-web.js',
-    library: 'ConnectionChecker',
+    library: 'ConnectionJQueueSdkWeb',
     libraryTarget: 'umd',
     globalObject: 'this'
   },
@@ -15,14 +15,13 @@ module.exports = {
     rules: [
       {
         test: /\.ts$/,
-        exclude: /node_modules/,
-        use: {
-          loader: 'ts-loader'
-        }
+        use: 'ts-loader',
+        exclude: /node_modules/
       }
     ]
   },
   resolve: {
     extensions: ['.ts', '.js']
-  }
+  },
+  devtool: 'source-map'
 };
