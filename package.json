@@ -1,11 +1,11 @@
 {
   "name": "@joi.nguyen/j-queue-sdk-web",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "A TypeScript package to check WebSocket connection status and control web access with a popup",
   "main": "dist/j-queue-sdk-web.js",
   "module": "dist/j-queue-sdk-web.js",
   "browser": "dist/j-queue-sdk-web.js",
-  "types": "dist/index.d.ts",
+  "types": "dist/src/index.d.ts",
   "files": [
     "dist/**/*",
     "src/index.ts"
