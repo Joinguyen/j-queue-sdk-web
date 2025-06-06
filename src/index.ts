@@ -5,17 +5,19 @@ interface PopupConfig {
   content?: string | ((position?: number) => string);
 }
 
+interface CustomEventUtils {
+  createPopup: (html: string) => void;
+  removePopup: () => void;
+  preventNavigation: () => void;
+  allowNavigation: () => void;
+}
+
 interface InitConfig {
   url: string;
   socketConfig?: Record<string, any>;
   popupConfig?: PopupConfig;
   customEvents?: {
-    [eventName: string]: (data: any, utils: {
-      createPopup: (html: string) => void;
-      removePopup: () => void;
-      preventNavigation: () => void;
-      allowNavigation: () => void;
-    }) => void;
+    [eventName: string]: (data: any, utils: CustomEventUtils) => void;
   };
 }
 
@@ -64,7 +66,6 @@ class ConnectionJQueueSdkWeb {
     });
 
     socket.on('connection-status', (data: { uuid: string; position: number; allow: boolean }) => {
-      console.log('[J-Queue] Status:', data);
       if (data.allow) {
         removePopup();
         allowNavigation();
@@ -78,7 +79,6 @@ class ConnectionJQueueSdkWeb {
     });
 
     socket.on('position-update', (data: { position: number; allow: boolean }) => {
-      console.log('[J-Queue] Position updated:', data);
       if (data.allow) {
         removePopup();
         allowNavigation();
@@ -92,7 +92,12 @@ class ConnectionJQueueSdkWeb {
 
     Object.entries(customEvents).forEach(([eventName, handler]) => {
       socket.on(eventName, (data: any) => {
-        handler(data, { createPopup, removePopup, preventNavigation, allowNavigation });
+        handler(data, {
+          createPopup,
+          removePopup,
+          preventNavigation,
+          allowNavigation
+        });
       });
     });
 
