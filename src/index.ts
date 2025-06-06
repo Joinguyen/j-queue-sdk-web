@@ -5,28 +5,17 @@ class ConnectionJQueueSdkWeb {
   private static socket: Socket | null = null;
   private static popupEl: HTMLElement | null = null;
 
-  /**
-   * Initialize the WebSocket connection checker
-   * @param config Configuration options
-   * @returns Methods to control the connection
-   */
   public static init(config: InitConfig) {
     const {
-      url = 'wss://demo-websocket.example.com',
+      url,
       socketConfig = { transports: ['websocket'], reconnectionAttempts: 3 },
-      extraHeaders = {},
       popupConfig = {},
       customEvents = {}
     } = config;
 
-    // Initialize socket with optional extraHeaders
-    const socket = io(url, {
-      ...socketConfig,
-      extraHeaders: extraHeaders
-    });
+    const socket = io(url, socketConfig);
     this.socket = socket;
 
-    // Create popup with provided HTML content
     const createPopup = (html: string) => {
       this.removePopup();
       const div = document.createElement('div');
@@ -37,7 +26,6 @@ class ConnectionJQueueSdkWeb {
       this.popupEl = div;
     };
 
-    // Remove existing popup
     const removePopup = () => {
       if (this.popupEl) {
         this.popupEl.remove();
@@ -45,22 +33,18 @@ class ConnectionJQueueSdkWeb {
       }
     };
 
-    // Prevent browser navigation
     const preventNavigation = () => {
       window.onbeforeunload = () => 'Navigation is currently blocked.';
     };
 
-    // Allow browser navigation
     const allowNavigation = () => {
       window.onbeforeunload = null;
     };
 
-    // Handle connection event
     socket.on('connect', () => {
       console.log('[J-Queue] Connected');
     });
 
-    // Handle connection status updates
     socket.on('connection-status', (data: { uuid: string; position: number; allow: boolean }) => {
       if (data.allow) {
         removePopup();
@@ -74,7 +58,6 @@ class ConnectionJQueueSdkWeb {
       }
     });
 
-    // Handle position updates
     socket.on('position-update', (data: { position: number; allow: boolean }) => {
       if (data.allow) {
         removePopup();
@@ -87,7 +70,6 @@ class ConnectionJQueueSdkWeb {
       }
     });
 
-    // Register custom event handlers
     Object.entries(customEvents).forEach(([eventName, handler]) => {
       socket.on(eventName, (data: any) => {
         const utils: CustomEventUtils = {
@@ -100,7 +82,6 @@ class ConnectionJQueueSdkWeb {
       });
     });
 
-    // Handle disconnection
     socket.on('disconnect', () => {
       console.warn('[J-Queue] Disconnected from server');
     });
@@ -110,9 +91,6 @@ class ConnectionJQueueSdkWeb {
     };
   }
 
-  /**
-   * Remove the popup if it exists
-   */
   public static removePopup() {
     if (this.popupEl) {
       this.popupEl.remove();
