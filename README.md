@@ -143,11 +143,13 @@ export default App;
 ## Configuration Options
 
 - `url` (string, required): WebSocket server URL (e.g., `wss://queue-server.example.com`).
+- `option` (object, optional): Additional configuration options for the SDK.
+  - `storageKey` (string): The key used to store the UUID in `localStorage` for persisting queue session data (e.g., `'jqueue_uuid'`). This allows the SDK to retrieve the UUID across page reloads or sessions, ensuring continuity in queue tracking.
 - `socketConfig` (object, optional): Socket.IO configuration options.
   - `transports` (string[]): Transport methods (default: `['websocket']`).
   - `reconnectionAttempts` (number): Number of reconnection attempts (default: `3`).
   - `reconnectionDelay` (number): Delay between reconnection attempts in milliseconds (default: `1000`).
-  - `query` (object): Additional query parameters sent to the server (e.g., `{ app_id: '1', service_name: 'news' }`).
+  - `query` (object): Additional query parameters sent to the server (e.g., `{ app_id: 'XXXXX', service_name: 'NEWS' }`).
 - `popupConfig` (object, optional):
   - `language` ('en' | 'ko'): Language for default popup content (default: `'ko'`).
   - `style` (string): Custom CSS for the popup.
