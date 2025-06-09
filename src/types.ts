@@ -1,5 +1,3 @@
-import { Socket } from 'socket.io-client';
-
 export interface PopupConfig {
     language?: 'en' | 'ko'
     style?: string;
@@ -24,4 +22,9 @@ export interface InitConfig {
     popupConfig?: PopupConfig;
     customEvents?: Record<string, (data: unknown, utils: CustomEventUtils) => void>;
     pollInterval?: number;
+}
+
+export enum OnlineQueueStatus {
+    WAITING = 1,
+    ACTIVE = 2,
 }

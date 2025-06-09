@@ -1,10 +1,5 @@
 import { io, Socket } from 'socket.io-client';
-import { InitConfig, PopupConfig, CustomEventUtils } from './types';
-
-enum OnlineQueueStatus {
-  WAITING = 1,
-  ACTIVE = 2,
-}
+import { InitConfig, PopupConfig, CustomEventUtils, OnlineQueueStatus } from './types';
 
 interface ConnectionState {
   socket: Socket | null;
