@@ -1,6 +1,7 @@
 import { Socket } from 'socket.io-client';
 
 export interface PopupConfig {
+    language?: 'en' | 'ko'
     style?: string;
     content?: string | ((position: number) => string);
 }
