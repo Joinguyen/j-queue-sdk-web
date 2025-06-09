@@ -1,4 +1,4 @@
-# @joi.nguyen/j-queue-sdk-web
+# j-queue-sdk-web
 
 A TypeScript package for managing WebSocket connections and controlling web access by displaying a customizable full-screen popup when users are in a queue. It integrates with a WebSocket server to handle queue status updates and navigation restrictions.
 
@@ -7,7 +7,7 @@ A TypeScript package for managing WebSocket connections and controlling web acce
 Install the package via npm:
 
 ```bash
-npm install @joi.nguyen/j-queue-sdk-web
+npm install j-queue-sdk-web
 ```
 
 Ensure you have the Socket.IO client included in your project:
@@ -29,7 +29,7 @@ For browser environments, include the Socket.IO client script:
 1. Import and initialize the package:
 
 ```typescript
-import ConnectionJQueueSdkWeb from '@joi.nguyen/j-queue-sdk-web';
+import ConnectionJQueueSdkWeb from 'j-queue-sdk-web';
 
 const connection = ConnectionJQueueSdkWeb.init({
   url: 'wss://queue-server.example.com',
@@ -61,7 +61,7 @@ Or, in a browser environment:
 
 ```html
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="node_modules/@joi.nguyen/j-queue-sdk-web/dist/j-queue-sdk-web.js"></script>
+<script src="node_modules/j-queue-sdk-web/dist/j-queue-sdk-web.js"></script>
 <script>
   ConnectionJQueueSdkWeb.init({
     url: 'wss://queue-server.example.com',
@@ -79,19 +79,19 @@ Or, in a browser environment:
 
 ### Usage in React
 
-To use `@joi.nguyen/j-queue-sdk-web` in a React application, initialize the WebSocket connection in a component using the `useEffect` hook to manage the connection lifecycle. Below is an example:
+To use `j-queue-sdk-web` in a React application, initialize the WebSocket connection in a component using the `useEffect` hook to manage the connection lifecycle. Below is an example:
 
 1. Install the package and dependencies in your React project:
 
 ```bash
-npm install @joi.nguyen/j-queue-sdk-web socket.io-client
+npm install j-queue-sdk-web socket.io-client
 ```
 
 2. Create a component to initialize the WebSocket connection:
 
 ```tsx
 import { useEffect, useState } from 'react';
-import ConnectionJQueueSdkWeb from '@joi.nguyen/j-queue-sdk-web';
+import ConnectionJQueueSdkWeb from 'j-queue-sdk-web';
 
 const WebSocketComponent = () => {
   useEffect(() => {
