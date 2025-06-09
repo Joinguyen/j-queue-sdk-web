@@ -13,6 +13,9 @@ export interface CustomEventUtils {
 
 export interface InitConfig {
     url: string;
+    option?: {
+        storageKey?: string
+    },
     socketConfig?: {
         transports?: string[];
         reconnectionAttempts?: number;

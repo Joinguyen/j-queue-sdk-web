@@ -5,6 +5,7 @@ interface ConnectionState {
   socket: Socket | null;
   popupEl: HTMLElement | null;
   isNavigating: boolean;
+  storageKey: string | null;
 }
 
 interface StatusResponse {
@@ -20,6 +21,7 @@ class ConnectionJQueueSdkWeb {
     socket: null,
     popupEl: null,
     isNavigating: false,
+    storageKey: null,
   };
 
   private static statusInterval: NodeJS.Timeout | null = null;
@@ -94,7 +96,7 @@ class ConnectionJQueueSdkWeb {
     const div = document.createElement('div');
     div.id = '__jqueue_popup';
     div.style.cssText = style ?? this.STYLES.POPUP;
-    div.innerHTML = html; // Consider adding DOMPurify for XSS protection
+    div.innerHTML = html;
     document.body.appendChild(div);
     this.state.popupEl = div;
   }
@@ -147,6 +149,7 @@ class ConnectionJQueueSdkWeb {
     popupConfig = {},
     customEvents = {},
     pollInterval = this.STATUS_POLL_INTERVAL,
+    option = {},
   }: InitConfig) {
     if (!url) throw new Error('URL is required for initialization');
     if (this.state.socket?.connected) {
@@ -157,6 +160,7 @@ class ConnectionJQueueSdkWeb {
     this.injectStyles();
     const socket = io(url, socketConfig);
     this.state.socket = socket;
+    this.state.storageKey = option.storageKey ?? null; // Set storage key if provided
 
     const handleStatusUpdate = ({ data }: StatusResponse): void => {
       if (!data) {
@@ -164,7 +168,12 @@ class ConnectionJQueueSdkWeb {
         return;
       }
 
-      const { status, position } = data;
+      const { status, position, uuid } = data;
+      // Store UUID in localStorage if storageKey is provided
+      if (this.state.storageKey && uuid) {
+        localStorage.setItem(this.state.storageKey, uuid);
+      }
+
       if (status === OnlineQueueStatus.ACTIVE) {
         this.removePopup();
         this.allowNavigation();
@@ -192,6 +201,10 @@ class ConnectionJQueueSdkWeb {
     socket.on('connect_error', (error) => console.error('[J-Queue] Connection error:', error.message));
     socket.on('disconnect', (reason) => {
       console.warn('[J-Queue] Disconnected from server:', reason);
+      // Remove UUID from localStorage on disconnect if storageKey exists
+      if (this.state.storageKey) {
+        localStorage.removeItem(this.state.storageKey);
+      }
       if (this.statusInterval) {
         clearInterval(this.statusInterval);
         this.statusInterval = null;
@@ -222,6 +235,11 @@ class ConnectionJQueueSdkWeb {
     if (this.statusInterval) {
       clearInterval(this.statusInterval);
       this.statusInterval = null;
+    }
+    // Remove UUID from localStorage on disconnect if storageKey exists
+    if (this.state.storageKey) {
+      localStorage.removeItem(this.state.storageKey);
+      this.state.storageKey = null;
     }
     this.removePopup();
     this.allowNavigation();

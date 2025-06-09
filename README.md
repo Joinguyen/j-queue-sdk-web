@@ -33,6 +33,7 @@ import ConnectionJQueueSdkWeb from '@joi.nguyen/j-queue-sdk-web';
 
 const connection = ConnectionJQueueSdkWeb.init({
   url: 'wss://queue-server.example.com',
+  option: { storageKey: 'jqueue_uuid' }, // UUID will be stored with this key
   socketConfig: {
     transports: ['websocket'],
     reconnectionAttempts: 3,
@@ -61,6 +62,7 @@ Or, in a browser environment:
 <script>
   ConnectionJQueueSdkWeb.init({
     url: 'wss://queue-server.example.com',
+    option: { storageKey: 'jqueue_uuid' }, // UUID will be stored with this key
     popupConfig: {
       language: 'en',
       content: (position) => `<div>Queue Position: ${position}</div>`,
@@ -89,6 +91,7 @@ const WebSocketComponent = () => {
   useEffect(() => {
     const connection = ConnectionJQueueSdkWeb.init({
       url: 'wss://queue-server.example.com',
+      option: { storageKey: 'jqueue_uuid' }, // UUID will be stored with this key
       socketConfig: {
         transports: ['websocket'],
         reconnectionAttempts: 3,
