@@ -2,6 +2,9 @@ export interface PopupConfig {
     language?: 'en' | 'ko'
     style?: string;
     content?: string | ((position: number) => string);
+    textColor?: string;
+    loaderGradientStart?: string;
+    loaderGradientEnd?: string;
 }
 
 export interface CustomEventUtils {

@@ -46,6 +46,9 @@ const connection = ConnectionJQueueSdkWeb.init({
   },
   popupConfig: {
     language: 'en', // or 'ko' for Korean
+    textColor: '#276bff', // Text color for the popup
+    loaderGradientStart: '#276bff', // Starting color of the loader gradient
+    loaderGradientEnd: 'rgba(39,107,255,0.05)', // Ending color of the loader gradient
   },
   pollInterval: 2000,
 });
@@ -65,6 +68,9 @@ Or, in a browser environment:
     option: { storageKey: 'jqueue_uuid' }, // UUID will be stored with this key
     popupConfig: {
       language: 'en',
+      textColor: '#276bff', // Text color for the popup
+      loaderGradientStart: '#276bff', // Starting color of the loader gradient
+      loaderGradientEnd: 'rgba(39,107,255,0.05)', // Ending color of the loader gradient
       content: (position) => `<div>Queue Position: ${position}</div>`,
     },
   });
@@ -103,7 +109,10 @@ const WebSocketComponent = () => {
         },
       },
       popupConfig: {
-        language: 'en', // en | ko
+        language: 'en', // en | ko,
+        textColor: '#276bff', // Text color for the popup
+        loaderGradientStart: '#276bff', // Starting color of the loader gradient
+        loaderGradientEnd: 'rgba(39,107,255,0.05)', // Ending color of the loader gradient
       },
     });
 
@@ -154,6 +163,9 @@ export default App;
   - `language` ('en' | 'ko'): Language for default popup content (default: `'ko'`).
   - `style` (string): Custom CSS for the popup.
   - `content` (string | (position: number) => string): Custom HTML content for the popup, either as a static string or a function that takes `position` and returns HTML.
+  - `textColor` (string): Color for the popup text (e.g., `'#276bff'`). Overrides the default text color.
+  - `loaderGradientStart` (string): Starting color of the loader gradient (e.g., `'#276bff'`). Defines the initial color of the loading animation.
+  - `loaderGradientEnd` (string): Ending color of the loader gradient (e.g., `'rgba(39,107,255,0.05)'`). Defines the final color of the loading animation.
 - `customEvents` (object, optional): Key-value pairs where the key is the event name and the value is a handler function. The handler receives event `data` and utilities `{ createPopup, removePopup, preventNavigation, allowNavigation }`.
 - `pollInterval` (number, optional): Interval for polling queue status in milliseconds (default: `2000`).
 
