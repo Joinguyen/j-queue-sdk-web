@@ -2,11 +2,11 @@ import { Socket } from 'socket.io-client';
 
 export interface PopupConfig {
     style?: string;
-    content?: string | ((position?: number) => string);
+    content?: string | ((position: number) => string);
 }
 
 export interface CustomEventUtils {
-    createPopup: (html: string) => void;
+    createPopup: (html: string, style?: string) => void;
     removePopup: () => void;
     preventNavigation: () => void;
     allowNavigation: () => void;
@@ -14,10 +14,13 @@ export interface CustomEventUtils {
 
 export interface InitConfig {
     url: string;
-    socketConfig?: Record<string, any>;
-    extraHeaders?: Record<string, any>;
-    popupConfig?: PopupConfig;
-    customEvents?: {
-        [eventName: string]: (data: any, utils: CustomEventUtils) => void;
+    socketConfig?: {
+        transports?: string[];
+        reconnectionAttempts?: number;
+        reconnectionDelay?: number;
+        query?: Record<string, any>;
     };
+    popupConfig?: PopupConfig;
+    customEvents?: Record<string, (data: unknown, utils: CustomEventUtils) => void>;
+    pollInterval?: number;
 }
