@@ -1,6 +1,3 @@
-```markdown
-# @joi.nguyen/j-queue-sdk-web
-
 A TypeScript package for managing WebSocket connections and controlling web access by displaying a customizable full-screen popup when users are in a queue. It integrates with a WebSocket server to handle queue status updates and navigation restrictions.
 
 ## Installation
@@ -39,40 +36,13 @@ const connection = ConnectionJQueueSdkWeb.init({
     reconnectionAttempts: 3,
     reconnectionDelay: 1000,
     query: {
-      app_id: '1',
-      service_name: 'news',
-      ip_address: '192.168.1.1',
+      app_id: 'XXXXX',
+      service_name: 'NEWS',
+      ip_address: 'IP_ADDRESS_CLIENT',
     },
   },
   popupConfig: {
     language: 'en', // or 'ko' for Korean
-    style: `
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.9);
-      z-index: 10000;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      color: #fff;
-      font-family: Arial, sans-serif;
-      font-size: 28px;
-    `,
-    content: (position: number) => `
-      <div style="text-align: center;">
-        <h1>Waiting in Queue</h1>
-        <p>Position: ${position}</p>
-        <p>Please wait...</p>
-      </div>
-    `,
-  },
-  customEvents: {
-    'custom-event': (data, { createPopup, removePopup }) => {
-      console.log('Custom event received:', data);
-      if (data?.message) {
-        createPopup(`<div>${data.message}</div>`);
-      }
-    },
   },
   pollInterval: 2000,
 });
@@ -112,61 +82,32 @@ npm install @joi.nguyen/j-queue-sdk-web socket.io-client
 ```tsx
 import { useEffect, useState } from 'react';
 import ConnectionJQueueSdkWeb from '@joi.nguyen/j-queue-sdk-web';
-import { useTranslation } from 'react-i18next';
 
 const WebSocketComponent = () => {
-  const { i18n } = useTranslation();
-  const [ipAddress, setIpAddress] = useState('');
-
   useEffect(() => {
-    const fetchIpAddress = async () => {
-      try {
-        const response = await fetch(`${process.env.REACT_APP_API_IPIFY || 'https://api.ipify.org'}?format=json`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data = await response.json();
-        setIpAddress(data.ip);
-      } catch (error) {
-        console.error('Error fetching IP address:', error);
-        setIpAddress('unknown');
-      }
-    };
-    fetchIpAddress();
-  }, []);
-
-  useEffect(() => {
-    if (!ipAddress) return;
-
     const connection = ConnectionJQueueSdkWeb.init({
-      url: process.env.REACT_APP_SOCKET_QUEUE || 'wss://queue-server.example.com',
+      url: 'wss://queue-server.example.com',
       socketConfig: {
         transports: ['websocket'],
         reconnectionAttempts: 3,
         reconnectionDelay: 1000,
         query: {
-          app_id: '1',
-          service_name: 'news',
-          ip_address: ipAddress,
+          app_id: 'XXXXX',
+          service_name: 'NEWS',
+          ip_address: 'IP_ADDRESS_CLIENT',
         },
       },
       popupConfig: {
-        language: i18n.language as 'en' | 'ko',
-      },
-      customEvents: {
-        'custom-event': (data, { createPopup }) => {
-          console.log('Custom event received:', data);
-          if (data?.message) {
-            createPopup(`<div>${data.message}</div>`);
-          }
-        },
+        language: 'en', // en | ko
       },
     });
 
     return () => {
       connection.disconnect();
     };
-  }, [ipAddress, i18n.language]);
+  }, []);
 
-  return null;
+  return <></>;
 };
 
 export default WebSocketComponent;
@@ -191,8 +132,6 @@ export default App;
 
 #### Notes for React Usage:
 - The `useEffect` hook ensures the WebSocket connection is initialized on mount and disconnected on unmount, preventing memory leaks.
-- The `ipAddress` state is used to pass client information to the WebSocket server via `socketConfig.query`.
-- The `i18n.language` is used to dynamically set the popup language, supporting multilingual applications.
 - Customize `popupConfig` and `customEvents` to match your application's UI and requirements.
 - Ensure the WebSocket server supports the `online-queue:status` event with the data format `{ data: { uuid: string, position: number, status: number } }`.
 
