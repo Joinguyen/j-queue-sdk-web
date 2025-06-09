@@ -1,11 +1,4 @@
-
-Run this command in your project directory, and it will create a `README.md` file with the exact content.
-
-#### Option 3: Command Line (Windows PowerShell)
-For Windows users, you can use the following PowerShell command:
-
-```powershell
-@"
+```markdown
 # @joi.nguyen/j-queue-sdk-web
 
 A TypeScript package for managing WebSocket connections and controlling web access by displaying a customizable full-screen popup when users are in a queue. It integrates with a WebSocket server to handle queue status updates and navigation restrictions.
@@ -14,21 +7,21 @@ A TypeScript package for managing WebSocket connections and controlling web acce
 
 Install the package via npm:
 
-\`\`\`bash
+```bash
 npm install @joi.nguyen/j-queue-sdk-web
-\`\`\`
+```
 
 Ensure you have the Socket.IO client included in your project:
 
-\`\`\`bash
+```bash
 npm install socket.io-client
-\`\`\`
+```
 
 For browser environments, include the Socket.IO client script:
 
-\`\`\`html
+```html
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-\`\`\`
+```
 
 ## Usage
 
@@ -36,7 +29,7 @@ For browser environments, include the Socket.IO client script:
 
 1. Import and initialize the package:
 
-\`\`\`typescript
+```typescript
 import ConnectionJQueueSdkWeb from '@joi.nguyen/j-queue-sdk-web';
 
 const connection = ConnectionJQueueSdkWeb.init({
@@ -53,7 +46,7 @@ const connection = ConnectionJQueueSdkWeb.init({
   },
   popupConfig: {
     language: 'en', // or 'ko' for Korean
-    style: \`
+    style: `
       position: fixed;
       inset: 0;
       background: rgba(0, 0, 0, 0.9);
@@ -64,20 +57,20 @@ const connection = ConnectionJQueueSdkWeb.init({
       color: #fff;
       font-family: Arial, sans-serif;
       font-size: 28px;
-    \`,
-    content: (position: number) => \`
+    `,
+    content: (position: number) => `
       <div style="text-align: center;">
         <h1>Waiting in Queue</h1>
-        <p>Position: \${position}</p>
+        <p>Position: ${position}</p>
         <p>Please wait...</p>
       </div>
-    \`,
+    `,
   },
   customEvents: {
     'custom-event': (data, { createPopup, removePopup }) => {
       console.log('Custom event received:', data);
       if (data?.message) {
-        createPopup(\`<div>\${data.message}</div>\`);
+        createPopup(`<div>${data.message}</div>`);
       }
     },
   },
@@ -86,11 +79,11 @@ const connection = ConnectionJQueueSdkWeb.init({
 
 // Disconnect when done
 connection.disconnect();
-\`\`\`
+```
 
 Or, in a browser environment:
 
-\`\`\`html
+```html
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="node_modules/@joi.nguyen/j-queue-sdk-web/dist/j-queue-sdk-web.js"></script>
 <script>
@@ -98,11 +91,11 @@ Or, in a browser environment:
     url: 'wss://queue-server.example.com',
     popupConfig: {
       language: 'en',
-      content: (position) => \`<div>Queue Position: \${position}</div>\`,
+      content: (position) => `<div>Queue Position: ${position}</div>`,
     },
   });
 </script>
-\`\`\`
+```
 
 ### Usage in React
 
@@ -110,23 +103,26 @@ To use `@joi.nguyen/j-queue-sdk-web` in a React application, initialize the WebS
 
 1. Install the package and dependencies in your React project:
 
-\`\`\`bash
+```bash
 npm install @joi.nguyen/j-queue-sdk-web socket.io-client
-\`\`\`
+```
 
 2. Create a component to initialize the WebSocket connection:
 
-\`\`\`tsx
+```tsx
 import { useEffect, useState } from 'react';
 import ConnectionJQueueSdkWeb from '@joi.nguyen/j-queue-sdk-web';
+import { useTranslation } from 'react-i18next';
 
 const WebSocketComponent = () => {
+  const { i18n } = useTranslation();
   const [ipAddress, setIpAddress] = useState('');
 
   useEffect(() => {
     const fetchIpAddress = async () => {
       try {
-        const response = await fetch('https://api.ipify.org?format=json');
+        const response = await fetch(`${process.env.REACT_APP_API_IPIFY || 'https://api.ipify.org'}?format=json`);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
         setIpAddress(data.ip);
       } catch (error) {
@@ -141,7 +137,7 @@ const WebSocketComponent = () => {
     if (!ipAddress) return;
 
     const connection = ConnectionJQueueSdkWeb.init({
-      url: 'wss://queue-server.example.com',
+      url: process.env.REACT_APP_SOCKET_QUEUE || 'wss://queue-server.example.com',
       socketConfig: {
         transports: ['websocket'],
         reconnectionAttempts: 3,
@@ -153,20 +149,13 @@ const WebSocketComponent = () => {
         },
       },
       popupConfig: {
-        language: 'en',
-        content: (position: number) => \`
-          <div style="text-align: center;">
-            <h1>Waiting in Queue</h1>
-            <p>Position: \${position}</p>
-            <p>Please wait...</p>
-          </div>
-        \`,
+        language: i18n.language as 'en' | 'ko',
       },
       customEvents: {
         'custom-event': (data, { createPopup }) => {
           console.log('Custom event received:', data);
           if (data?.message) {
-            createPopup(\`<div>\${data.message}</div>\`);
+            createPopup(`<div>${data.message}</div>`);
           }
         },
       },
@@ -175,17 +164,17 @@ const WebSocketComponent = () => {
     return () => {
       connection.disconnect();
     };
-  }, [ipAddress]);
+  }, [ipAddress, i18n.language]);
 
   return null;
 };
 
 export default WebSocketComponent;
-\`\`\`
+```
 
 3. Use the component in your app:
 
-\`\`\`tsx
+```tsx
 import WebSocketComponent from './WebSocketComponent';
 
 function App() {
@@ -198,11 +187,12 @@ function App() {
 }
 
 export default App;
-\`\`\`
+```
 
 #### Notes for React Usage:
 - The `useEffect` hook ensures the WebSocket connection is initialized on mount and disconnected on unmount, preventing memory leaks.
 - The `ipAddress` state is used to pass client information to the WebSocket server via `socketConfig.query`.
+- The `i18n.language` is used to dynamically set the popup language, supporting multilingual applications.
 - Customize `popupConfig` and `customEvents` to match your application's UI and requirements.
 - Ensure the WebSocket server supports the `online-queue:status` event with the data format `{ data: { uuid: string, position: number, status: number } }`.
 
@@ -238,9 +228,9 @@ export default App;
 
 Compile TypeScript and bundle the package using Webpack:
 
-\`\`\`bash
+```bash
 npm run build
-\`\`\`
+```
 
 This generates `dist/j-queue-sdk-web.js`.
 
@@ -248,9 +238,9 @@ This generates `dist/j-queue-sdk-web.js`.
 
 Run tests using Jest in a jsdom environment:
 
-\`\`\`bash
+```bash
 npm test
-\`\`\`
+```
 
 Tests are located in the `tests` directory and cover initialization, event handling, and disconnection logic.
 
@@ -266,4 +256,4 @@ MIT
 
 - **GitHub**: [https://github.com/Joinguyen/j-queue-sdk-web](https://github.com/Joinguyen/j-queue-sdk-web)
 - **Issues**: [https://github.com/Joinguyen/j-queue-sdk-web/issues](https://github.com/Joinguyen/j-queue-sdk-web/issues)
-"@ | Out-File -FilePath README.md -Encoding utf8
+```
