@@ -1,3 +1,5 @@
+# @joi.nguyen/j-queue-sdk-web
+
 A TypeScript package for managing WebSocket connections and controlling web access by displaying a customizable full-screen popup when users are in a queue. It integrates with a WebSocket server to handle queue status updates and navigation restrictions.
 
 ## Installation
@@ -187,6 +189,20 @@ Tests are located in the `tests` directory and cover initialization, event handl
 
 The default popup content uses direct HTML injection (`innerHTML`). For production use, consider integrating a library like `DOMPurify` to sanitize HTML and prevent XSS attacks.
 
+## Keywords
+
+- WebSocket
+- Socket.IO
+- Queue Management
+- Access Control
+- Popup
+- TypeScript
+- React
+- Real-time
+- Navigation Control
+- Multilingual
+- Client-side
+
 ## License
 
 MIT
@@ -195,4 +211,3 @@ MIT
 
 - **GitHub**: [https://github.com/Joinguyen/j-queue-sdk-web](https://github.com/Joinguyen/j-queue-sdk-web)
 - **Issues**: [https://github.com/Joinguyen/j-queue-sdk-web/issues](https://github.com/Joinguyen/j-queue-sdk-web/issues)
-```
