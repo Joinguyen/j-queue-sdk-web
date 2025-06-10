@@ -1,6 +1,5 @@
 node_modules/
 tests/
-src/
 *.log
 webpack.config.js
 jest.config.js
