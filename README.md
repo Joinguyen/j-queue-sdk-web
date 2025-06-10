@@ -61,21 +61,64 @@ Or, in a browser environment:
 
 ```html
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="node_modules/j-queue-sdk-web/dist/j-queue-sdk-web.js"></script>
+<script src="https://unpkg.com/j-queue-sdk-web@<version>/dist/j-queue-sdk-web.js"></script>
 <script>
-  ConnectionJQueueSdkWeb.init({
-    url: 'wss://queue-server.example.com',
-    option: { storageKey: 'jqueue_uuid' }, // UUID will be stored with this key
-    popupConfig: {
-      language: 'en',
-      textColor: '#276bff', // Text color for the popup
-      loaderGradientStart: '#276bff', // Starting color of the loader gradient
-      loaderGradientEnd: 'rgba(39,107,255,0.05)', // Ending color of the loader gradient
-      content: (position) => `<div>Queue Position: ${position}</div>`,
-    },
-  });
+  try {
+    // Handle default export
+    const JQueueSdk = window.ConnectionJQueueSdkWeb.default || window.ConnectionJQueueSdkWeb;
+    const connection = JQueueSdk.init({
+      url: 'wss://queue-server.example.com', // Use wss:// for WebSocket
+      option: { storageKey: 'queue_token' },
+      popupConfig: {
+        language: 'en', // 'en' or 'ko'
+        textColor: '#276bff',
+        loaderGradientStart: '#276bff',
+        loaderGradientEnd: 'rgba(39,107,255,0.05)',
+      },
+      socketConfig: {
+        transports: ['websocket'],
+        reconnectionAttempts: 3,
+        reconnectionDelay: 1000,
+        query: {
+          app_id: 'XXXXX',
+          service_name: 'NEWS',
+          ip_address: 'IP_ADDRESS_CLIENT', // Replace with actual IP
+        },
+      },
+      customEvents: {
+        disconnect: (data, utils) => {
+          const queue_token = sessionStorage.getItem('queue_token') || '';
+          if (queue_token) {
+            const beaconData = JSON.stringify({
+              uuid: queue_token,
+              app_id: 'XXXXX',
+              service_name: 'NEWS',
+            });
+            const blob = new Blob([beaconData], { type: 'application/json' });
+            navigator.sendBeacon('https://example.com/log-disconnect', blob);
+          }
+        },
+        'online-queue:status': (data, utils) => {
+          console.log('Queue status:', data);
+        },
+      },
+    });
+
+    // Clean up on page unload
+    window.addEventListener('beforeunload', () => {
+      connection.disconnect();
+    });
+  } catch (error) {
+    console.error('Error initializing j-queue-sdk-web:', error);
+  }
 </script>
 ```
+
+## Notes
+- **Socket.IO Client**: Load `socket.io-client@4.7.5` before `j-queue-sdk-web`.
+- **Default Export**: The script exports `ConnectionJQueueSdkWeb` as `ConnectionJQueueSdkWeb.default`. The code handles both cases.
+- **Error Handling**: Use `onerror` on the script tag and try-catch to handle errors.
+- **Beacon**: Update the `navigator.sendBeacon` URL (`https://example.com/log-disconnect`) to your actual endpoint.
 
 ### Usage in React
 

@@ -7,7 +7,8 @@ module.exports = {
     filename: 'j-queue-sdk-web.js',
     library: 'ConnectionJQueueSdkWeb',
     libraryTarget: 'umd',
-    globalObject: 'this'
+    globalObject: 'this',
+    libraryExport: 'default',
   },
   mode: 'production',
   target: 'web',
@@ -23,5 +24,8 @@ module.exports = {
   resolve: {
     extensions: ['.ts', '.js']
   },
-  devtool: 'source-map'
+  devtool: 'source-map',
+  externals: {
+    'socket.io-client': 'io'
+  }
 };

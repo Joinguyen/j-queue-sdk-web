@@ -86,6 +86,7 @@ class ConnectionJQueueSdkWeb {
   private static statusInterval: NodeJS.Timeout | null = null;
 
   private static injectStyles(popupConfig?: PopupConfig): void {
+    if (typeof document === 'undefined') return;
     if (document.querySelector('style[data-jqueue-styles]')) return;
     const styleEl = document.createElement('style');
     styleEl.dataset.jqueueStyles = '';
@@ -94,6 +95,7 @@ class ConnectionJQueueSdkWeb {
   }
 
   private static createPopup(html: string, style?: string): void {
+    if (typeof document === 'undefined') return;
     this.removePopup();
     const div = document.createElement('div');
     div.id = '__jqueue_popup';
@@ -104,11 +106,13 @@ class ConnectionJQueueSdkWeb {
   }
 
   private static removePopup(): void {
+    if (typeof document === 'undefined') return;
     this.state.popupEl?.remove();
     this.state.popupEl = null;
   }
 
   private static toggleNavigation(block: boolean): void {
+    if (typeof window === 'undefined') return;
     if (this.state.isNavigating === block) return;
     window.onbeforeunload = block ? () => 'Navigation is currently blocked.' : null;
     this.state.isNavigating = block;
@@ -142,9 +146,12 @@ class ConnectionJQueueSdkWeb {
     popupConfig = {},
     customEvents = {},
     pollInterval = this.CONFIG.STATUS_POLL_INTERVAL,
-    option = {},
+    option = { storageKey: 'queue_token' },
   }: InitConfig) {
     if (!url) throw new Error('URL is required for initialization');
+    if (typeof io === 'undefined') {
+      throw new Error('Socket.IO client is not loaded. Please include socket.io-client before j-queue-sdk-web.');
+    }
     if (this.state.socket?.connected) {
       console.warn('[J-Queue] Already initialized, skipping');
       return { disconnect: () => this.disconnect() };
@@ -162,7 +169,7 @@ class ConnectionJQueueSdkWeb {
       }
 
       const { status, position, uuid } = data;
-      if (this.state.storageKey && uuid) {
+      if (this.state.storageKey && uuid && typeof sessionStorage !== 'undefined') {
         sessionStorage.setItem(this.state.storageKey, uuid);
       }
 
@@ -176,7 +183,7 @@ class ConnectionJQueueSdkWeb {
       } else {
         const content = typeof popupConfig.content === 'function'
           ? popupConfig.content(position)
-          : popupConfig.content ?? this.getDefaultPopupContent(position, popupConfig.language, popupConfig);
+          : popupConfig.content ?? this.getDefaultPopupContent(position, popupConfig.language ?? 'ko', popupConfig);
         this.createPopup(content, popupConfig.style);
         this.toggleNavigation(true);
       }
@@ -214,7 +221,7 @@ class ConnectionJQueueSdkWeb {
   }
 
   private static cleanup(): void {
-    if (this.state.storageKey) {
+    if (typeof sessionStorage !== 'undefined' && this.state.storageKey) {
       sessionStorage.removeItem(this.state.storageKey);
       this.state.storageKey = null;
     }
@@ -240,9 +247,12 @@ declare global {
   }
 }
 
+// Export for browser
 if (typeof window !== 'undefined') {
   window.ConnectionJQueueSdkWeb = ConnectionJQueueSdkWeb;
+  console.log('[J-Queue] ConnectionJQueueSdkWeb initialized on window');
 }
 
+// Export for module systems
 export default ConnectionJQueueSdkWeb;
 export type { InitConfig, PopupConfig } from './types';
