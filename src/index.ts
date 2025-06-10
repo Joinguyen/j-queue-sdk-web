@@ -163,7 +163,7 @@ class ConnectionJQueueSdkWeb {
 
       const { status, position, uuid } = data;
       if (this.state.storageKey && uuid) {
-        localStorage.setItem(this.state.storageKey, uuid);
+        sessionStorage.setItem(this.state.storageKey, uuid);
       }
 
       if (status === OnlineQueueStatus.ACTIVE) {
@@ -192,7 +192,7 @@ class ConnectionJQueueSdkWeb {
     socket.on('connect_error', (error) => console.error('[J-Queue] Connection error:', error.message));
     socket.on('disconnect', (reason) => {
       console.warn('[J-Queue] Disconnected from server:', reason);
-      this.cleanup();
+      // this.cleanup();
     });
 
     Object.entries(customEvents).forEach(([eventName, handler]) => {
@@ -215,7 +215,7 @@ class ConnectionJQueueSdkWeb {
 
   private static cleanup(): void {
     if (this.state.storageKey) {
-      localStorage.removeItem(this.state.storageKey);
+      sessionStorage.removeItem(this.state.storageKey);
       this.state.storageKey = null;
     }
     if (this.statusInterval) {
