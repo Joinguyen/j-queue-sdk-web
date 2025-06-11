@@ -201,18 +201,22 @@ class ConnectionJQueueSdkWeb {
 
     this.statusListeners.forEach((listener) => listener({ status, position, uuid }));
 
-    // Update TTL interval based on new position
-    const newTtlInterval = this.getAdjustedPollInterval(position, this.CONFIG.TTL_INTERVAL);
-    if (newTtlInterval !== currentTtlInterval.value) {
-      currentTtlInterval.value = newTtlInterval;
-      this.startTtlEmission(currentTtlInterval.value);
-    }
-
-    // Handle popup and navigation
     if (status === OnlineQueueStatus.ACTIVE) {
+      // Clear interval when status is ACTIVE
+      if (this.ttlInterval) {
+        clearInterval(this.ttlInterval);
+        this.ttlInterval = null;
+      }
       this.removePopup();
       this.toggleNavigation(false);
     } else {
+      // Update TTL interval based on new position for non-ACTIVE status
+      const newTtlInterval = this.getAdjustedPollInterval(position, this.CONFIG.TTL_INTERVAL);
+      if (newTtlInterval !== currentTtlInterval.value) {
+        currentTtlInterval.value = newTtlInterval;
+        this.startTtlEmission(currentTtlInterval.value);
+      }
+
       const content =
         typeof popupConfig?.content === 'function'
           ? popupConfig.content(position)
