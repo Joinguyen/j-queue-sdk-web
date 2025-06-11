@@ -26,6 +26,9 @@ export interface InitConfig {
     apiUrl: string;
     socketConfig?: {
         query?: QueryParams;
+        transports?: string[];
+        reconnectionAttempts?: number;
+        reconnectionDelay?: number;
     };
     popupConfig?: PopupConfig;
     customEvents?: Record<string, (data: any, utils: CustomEventUtils) => void>;

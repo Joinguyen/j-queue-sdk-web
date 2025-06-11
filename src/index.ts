@@ -1,7 +1,8 @@
+import { io, Socket } from 'socket.io-client';
 import { InitConfig, PopupConfig, OnlineQueueStatus, CustomEventUtils } from './types';
 
 interface ConnectionState {
-  socket: WebSocket | null;
+  socket: Socket | null;
   popupEl: HTMLElement | null;
   isNavigating: boolean;
   storageKey: string | null;
@@ -17,11 +18,6 @@ interface StatusResponse {
     position: number;
     status: OnlineQueueStatus;
   };
-}
-
-interface WebSocketMessage {
-  event: string;
-  data: any;
 }
 
 type QueryParams = Record<string, string | number | undefined>;
@@ -154,12 +150,12 @@ class ConnectionJQueueSdkWeb {
     this.state.isNavigating = block;
   }
 
-  /** Sends a leave request via navigator.sendBeacon. */
+  /** Sends a leave request via navigator.sendBeacon with JSON data. */
   private static sendLeaveRequest(): void {
     const { apiUrl, queueStatus } = this.state;
     if (!apiUrl || !queueStatus?.uuid) return;
     try {
-      const data = new URLSearchParams(); data.set('uuid', queueStatus?.uuid);
+      const data = JSON.stringify({ uuid: queueStatus.uuid });
       navigator.sendBeacon(`${apiUrl}${this.CONFIG.API_ENDPOINTS.LEAVE}`, data);
     } catch (error) {
       this.log('Leave API (sendBeacon) failed', 'error', error);
@@ -177,7 +173,7 @@ class ConnectionJQueueSdkWeb {
             ${messages.MESS_1}<br>${messages.MESS_2}
           </p>
           <div style="position: relative; width: 150px; height: 150px; margin: 20px auto;">
-            <span style="position: absolute; inset: 0;" class="loader-jqueue_popup"></span>
+            <span style="position: absolute; inset: 0;" class="loader-jqueue-static"></span>
             <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
               <div style="font-size: 14px; color: ${textColor};">${messages.MESS_3}</div>
               <div style="font-size: 36px; color: ${textColor}; font-weight: bold;">${position}</div>
@@ -188,7 +184,7 @@ class ConnectionJQueueSdkWeb {
     `;
   }
 
-  /** Configures the WebSocket with event handlers and periodic TTL emission. */
+  /** Configures the Socket.IO connection with event handlers and periodic TTL emission. */
   private static setupSocket(
     wsUrl: string,
     socketConfig: NonNullable<InitConfig['socketConfig']>,
@@ -196,49 +192,52 @@ class ConnectionJQueueSdkWeb {
     customEvents: InitConfig['customEvents'],
     handleStatusUpdate: (response: StatusResponse) => void,
   ): void {
-    const params = new URLSearchParams({ ...socketConfig.query, uuid });
-    const socket = new WebSocket(`${wsUrl}?${params.toString()}`);
+    const socket = io(wsUrl, {
+      query: { ...socketConfig.query, uuid },
+      transports: socketConfig.transports || ['websocket'],
+      reconnectionAttempts: socketConfig.reconnectionAttempts || 3,
+      reconnectionDelay: socketConfig.reconnectionDelay || 1000,
+    });
     this.state.socket = socket;
 
-    socket.onopen = () => {
-      this.log('WebSocket connected');
+    socket.on('connect', () => {
+      this.log('Socket.IO connected');
       this.ttlInterval = setInterval(() => {
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ event: 'online-queue:set-ttl', data: { ...socketConfig.query, uuid } }));
+        if (socket.connected) {
+          socket.emit('online-queue:set-ttl', { ...socketConfig.query, uuid });
           this.log('Sent online-queue:set-ttl');
         }
       }, this.CONFIG.TTL_INTERVAL);
-    };
+    });
 
-    socket.onmessage = (event) => {
-      try {
-        const message: WebSocketMessage = JSON.parse(event.data);
-        if (message.event === 'online-queue:status') {
-          handleStatusUpdate(message.data);
-        } else if (customEvents && message.event in customEvents) {
-          customEvents[message.event](message.data, {
+    socket.on('online-queue:status', (data: StatusResponse) => {
+      handleStatusUpdate(data);
+    });
+
+    if (customEvents) {
+      Object.keys(customEvents).forEach((event) => {
+        socket.on(event, (data: any) => {
+          customEvents[event](data, {
             createPopup: this.createPopup.bind(this),
             removePopup: this.removePopup.bind(this),
             preventNavigation: () => this.toggleNavigation(true),
             allowNavigation: () => this.toggleNavigation(false),
           });
-        }
-      } catch (error) {
-        this.log('WebSocket message handling failed', 'error', error);
-      }
-    };
+        });
+      });
+    }
 
-    socket.onerror = (error) => {
-      this.log('WebSocket error', 'error', error);
-    };
+    socket.on('connect_error', (error) => {
+      this.log('Socket.IO connection error', 'error', error);
+    });
 
-    socket.onclose = (event) => {
-      this.log(`WebSocket closed: code=${event.code}, reason=${event.reason}`, 'warn');
+    socket.on('disconnect', (reason) => {
+      this.log(`Socket.IO disconnected: ${reason}`, 'warn');
       if (this.ttlInterval) {
         clearInterval(this.ttlInterval);
         this.ttlInterval = null;
       }
-    };
+    });
   }
 
   /** Adds a listener for queue status updates. */
@@ -351,7 +350,7 @@ class ConnectionJQueueSdkWeb {
     option = { storageKey: this.CONFIG.STORAGE_KEY },
   }: InitConfig): Promise<{ disconnect: () => void }> {
     if (!wsUrl || !apiUrl) throw new Error('Both wsUrl and apiUrl are required for initialization');
-    if (typeof WebSocket === 'undefined') throw new Error('WebSocket is not supported in this environment.');
+    if (typeof window === 'undefined') throw new Error('Socket.IO is not supported in this environment.');
 
     this.state = {
       ...this.state,
@@ -418,12 +417,12 @@ class ConnectionJQueueSdkWeb {
     this.statusListeners = [];
   }
 
-  /** Disconnects the WebSocket and cleans up resources. */
+  /** Disconnects the Socket.IO connection and cleans up resources. */
   private static disconnect(): void {
-    if (this.state.socket?.readyState === WebSocket.OPEN && this.state.queueStatus?.uuid && this.state.apiUrl) {
+    if (this.state.socket?.connected && this.state.queueStatus?.uuid && this.state.apiUrl) {
       this.sendLeaveRequest();
     }
-    this.state.socket?.close();
+    this.state.socket?.disconnect();
     this.cleanup();
   }
 }

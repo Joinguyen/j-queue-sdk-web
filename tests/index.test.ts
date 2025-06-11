@@ -1,9 +1,21 @@
 import { OnlineQueueStatus, InitConfig } from '../src/types';
 import ConnectionJQueueSdkWeb from '../src/index';
+import { io, Socket } from 'socket.io-client';
 import '@testing-library/jest-dom';
 
+jest.mock('socket.io-client', () => {
+    const mockSocket = {
+        on: jest.fn(),
+        emit: jest.fn(),
+        disconnect: jest.fn(),
+        connected: true,
+        connect: jest.fn(),
+    };
+    return { io: jest.fn(() => mockSocket), Socket: jest.fn(() => mockSocket) };
+});
+
 describe('ConnectionJQueueSdkWeb', () => {
-    let mockWebSocket: jest.Mocked<WebSocket>;
+    let mockSocket: jest.Mocked<Socket>;
     let originalWindow: typeof window;
 
     beforeEach(() => {
@@ -12,17 +24,8 @@ describe('ConnectionJQueueSdkWeb', () => {
         jest.spyOn(console, 'warn').mockImplementation(() => { });
         jest.spyOn(console, 'error').mockImplementation(() => { });
 
-        // Mock WebSocket
-        mockWebSocket = {
-            onopen: null,
-            onmessage: null,
-            onerror: null,
-            onclose: null,
-            send: jest.fn(),
-            close: jest.fn(),
-            readyState: WebSocket.OPEN,
-        } as any;
-        jest.spyOn(global, 'WebSocket').mockImplementation(() => mockWebSocket);
+        // Get the mocked socket instance
+        mockSocket = (io as jest.Mock)().mock.results[0].value;
 
         // Mock window and document
         originalWindow = global.window;
@@ -73,13 +76,13 @@ describe('ConnectionJQueueSdkWeb', () => {
             );
         });
 
-        it('throws error if WebSocket is not supported', async () => {
-            const originalWebSocket = global.WebSocket;
-            (global as any).WebSocket = undefined;
+        it('throws error if browser environment is not supported', async () => {
+            const originalWindow = global.window;
+            (global as any).window = undefined;
             await expect(ConnectionJQueueSdkWeb.init({ wsUrl: 'ws://example.com', apiUrl: 'https://api.example.com' })).rejects.toThrow(
-                'WebSocket is not supported in this environment.'
+                'Socket.IO is not supported in this environment.'
             );
-            global.WebSocket = originalWebSocket;
+            global.window = originalWindow;
         });
 
         it('calls join API and sets up state for ACTIVE status', async () => {
@@ -97,14 +100,19 @@ describe('ConnectionJQueueSdkWeb', () => {
             };
             const result = await ConnectionJQueueSdkWeb.init(config);
 
-            expect(fetch).toHaveBeenCalledWith('https://api.example.com/api/v1/online-queue/join', {
+            expect(fetch).toHaveBeenCalledWith('https://api.example.com/join', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token: '123' }),
             });
             expect(ConnectionJQueueSdkWeb.getQueueStatus()).toEqual(mockResponse.data);
             expect(window.sessionStorage.setItem).toHaveBeenCalledWith('queue_token', 'test-uuid');
-            expect(WebSocket).toHaveBeenCalledWith('ws://websocket.example.com?token=123&uuid=test-uuid');
+            expect(io).toHaveBeenCalledWith('ws://websocket.example.com', {
+                query: { token: '123', uuid: 'test-uuid' },
+                transports: ['websocket'],
+                reconnectionAttempts: 3,
+                reconnectionDelay: 1000,
+            });
             expect(result).toEqual({ disconnect: expect.any(Function) });
         });
 
@@ -136,7 +144,7 @@ describe('ConnectionJQueueSdkWeb', () => {
             jest.advanceTimersByTime(2500);
             await Promise.resolve();
 
-            expect(fetch).toHaveBeenCalledWith('https://api.example.com/api/v1/online-queue/status?uuid=test-uuid', expect.any(Object));
+            expect(fetch).toHaveBeenCalledWith('https://api.example.com/status?uuid=test-uuid', expect.any(Object));
             expect(fetch).toHaveBeenCalledTimes(2);
 
             // Next poll after 1000ms (position 50 < 100)
@@ -150,7 +158,12 @@ describe('ConnectionJQueueSdkWeb', () => {
             await Promise.resolve();
 
             expect(fetch).toHaveBeenCalledTimes(3);
-            expect(WebSocket).toHaveBeenCalledWith('ws://websocket.example.com?token=123&uuid=test-uuid');
+            expect(io).toHaveBeenCalledWith('ws://websocket.example.com', {
+                query: { token: '123', uuid: 'test-uuid' },
+                transports: ['websocket'],
+                reconnectionAttempts: 3,
+                reconnectionDelay: 1000,
+            });
             expect(window.onbeforeunload).toBeNull();
         });
 
@@ -167,7 +180,7 @@ describe('ConnectionJQueueSdkWeb', () => {
         });
     });
 
-    describe('WebSocket setup', () => {
+    describe('Socket.IO setup', () => {
         it('sends online-queue:set-ttl every 5 seconds after connection', async () => {
             const mockResponse = {
                 data: { uuid: 'test-uuid', position: 1, status: OnlineQueueStatus.ACTIVE },
@@ -182,24 +195,24 @@ describe('ConnectionJQueueSdkWeb', () => {
                 socketConfig: { query: { token: '123' } },
             });
 
-            // Trigger onopen
-            mockWebSocket.onopen?.(new Event('open'));
+            // Trigger connect
+            const connectHandler = mockSocket.on.mock.calls.find(([event]) => event === 'connect')?.[1];
+            connectHandler?.();
 
-            expect(mockWebSocket.send).not.toHaveBeenCalled();
-
-            jest.advanceTimersByTime(5000);
-            expect(mockWebSocket.send).toHaveBeenCalledWith(
-                JSON.stringify({ event: 'online-queue:set-ttl', data: { token: '123', uuid: 'test-uuid' } })
-            );
+            expect(mockSocket.emit).not.toHaveBeenCalled();
 
             jest.advanceTimersByTime(5000);
-            expect(mockWebSocket.send).toHaveBeenCalledTimes(2);
-
-            // Trigger onclose
-            mockWebSocket.onclose?.(new CloseEvent('close', { code: 1000, reason: 'normal' }));
+            expect(mockSocket.emit).toHaveBeenCalledWith('online-queue:set-ttl', { token: '123', uuid: 'test-uuid' });
 
             jest.advanceTimersByTime(5000);
-            expect(mockWebSocket.send).toHaveBeenCalledTimes(2); // No further sends after close
+            expect(mockSocket.emit).toHaveBeenCalledTimes(2);
+
+            // Trigger disconnect
+            const disconnectHandler = mockSocket.on.mock.calls.find(([event]) => event === 'disconnect')?.[1];
+            disconnectHandler?.('io server disconnect');
+
+            jest.advanceTimersByTime(5000);
+            expect(mockSocket.emit).toHaveBeenCalledTimes(2); // No further emits after disconnect
         });
 
         it('handles online-queue:status messages', async () => {
@@ -218,9 +231,9 @@ describe('ConnectionJQueueSdkWeb', () => {
             const statusListener = jest.fn();
             ConnectionJQueueSdkWeb.addStatusListener(statusListener);
 
-            // Trigger onmessage with status
-            const statusMessage = { event: 'online-queue:status', data: { data: { uuid: 'test-uuid', position: 2, status: OnlineQueueStatus.ACTIVE } } };
-            mockWebSocket.onmessage?.(new MessageEvent('message', { data: JSON.stringify(statusMessage) }));
+            // Trigger online-queue:status
+            const statusHandler = mockSocket.on.mock.calls.find(([event]) => event === 'online-queue:status')?.[1];
+            statusHandler?.({ data: { uuid: 'test-uuid', position: 2, status: OnlineQueueStatus.ACTIVE } });
 
             expect(statusListener).toHaveBeenCalledWith({ uuid: 'test-uuid', position: 2, status: OnlineQueueStatus.ACTIVE });
         });
@@ -240,9 +253,9 @@ describe('ConnectionJQueueSdkWeb', () => {
                 customEvents: { 'custom-event': customEventHandler },
             });
 
-            // Trigger onmessage with custom event
-            const customMessage = { event: 'custom-event', data: { some: 'data' } };
-            mockWebSocket.onmessage?.(new MessageEvent('message', { data: JSON.stringify(customMessage) }));
+            // Trigger custom event
+            const customHandler = mockSocket.on.mock.calls.find(([event]) => event === 'custom-event')?.[1];
+            customHandler?.({ some: 'data' });
 
             expect(customEventHandler).toHaveBeenCalledWith(
                 { some: 'data' },
@@ -281,8 +294,8 @@ describe('ConnectionJQueueSdkWeb', () => {
 
             ConnectionJQueueSdkWeb.removeStatusListener(listener1);
 
-            const statusMessage = { event: 'online-queue:status', data: { data: { uuid: 'test-uuid', position: 2, status: OnlineQueueStatus.ACTIVE } } };
-            mockWebSocket.onmessage?.(new MessageEvent('message', { data: JSON.stringify(statusMessage) }));
+            const statusHandler = mockSocket.on.mock.calls.find(([event]) => event === 'online-queue:status')?.[1];
+            statusHandler?.({ data: { uuid: 'test-uuid', position: 2, status: OnlineQueueStatus.ACTIVE } });
 
             expect(listener1).toHaveBeenCalledTimes(1);
             expect(listener2).toHaveBeenCalledTimes(2);
@@ -374,13 +387,14 @@ describe('ConnectionJQueueSdkWeb', () => {
                 socketConfig: { query: { token: '123' } },
             });
 
-            // Trigger onopen to set readyState to OPEN
-            mockWebSocket.onopen?.(new Event('open'));
+            // Trigger connect to set connected to true
+            const connectHandler = mockSocket.on.mock.calls.find(([event]) => event === 'connect')?.[1];
+            connectHandler?.();
 
             disconnect();
 
             expect(window.navigator.sendBeacon).toHaveBeenCalledWith(
-                'https://api.example.com/api/v1/online-queue/leave',
+                'https://api.example.com/leave',
                 JSON.stringify({ uuid: 'test-uuid' })
             );
         });
@@ -403,7 +417,7 @@ describe('ConnectionJQueueSdkWeb', () => {
             onbeforeunload();
 
             expect(window.navigator.sendBeacon).toHaveBeenCalledWith(
-                'https://api.example.com/api/v1/online-queue/leave',
+                'https://api.example.com/leave',
                 JSON.stringify({ uuid: 'test-uuid' })
             );
         });
@@ -426,19 +440,20 @@ describe('ConnectionJQueueSdkWeb', () => {
             const listener = jest.fn();
             ConnectionJQueueSdkWeb.addStatusListener(listener);
 
-            // Trigger onopen to start TTL interval
-            mockWebSocket.onopen?.(new Event('open'));
+            // Trigger connect to start TTL interval
+            const connectHandler = mockSocket.on.mock.calls.find(([event]) => event === 'connect')?.[1];
+            connectHandler?.();
             jest.advanceTimersByTime(5000);
 
             disconnect();
 
             expect(window.sessionStorage.removeItem).toHaveBeenCalledWith('queue_token');
-            expect(mockWebSocket.close).toHaveBeenCalled();
+            expect(mockSocket.disconnect).toHaveBeenCalled();
             expect(ConnectionJQueueSdkWeb.getQueueStatus()).toBeNull();
             expect(ConnectionJQueueSdkWeb['statusListeners']).toHaveLength(0);
             expect(window.onbeforeunload).toBeNull();
             jest.advanceTimersByTime(5000);
-            expect(mockWebSocket.send).not.toHaveBeenCalled(); // TTL interval cleared
+            expect(mockSocket.emit).not.toHaveBeenCalled(); // TTL interval cleared
         });
     });
 });
