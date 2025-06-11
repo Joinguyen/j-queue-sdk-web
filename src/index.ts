@@ -23,7 +23,7 @@ type QueryParams = Record<string, string | number | undefined>;
 
 class ConnectionJQueueSdkWeb {
   private static readonly CONFIG = {
-    STATUS_POLL_INTERVAL: 10000,
+    STATUS_POLL_INTERVAL: 1000,
     TTL_INTERVAL: 5000, // Interval for emitting online-queue:set-ttl (5 seconds)
     API_ENDPOINTS: {
       JOIN: '/api/v1/online-queue/join',
@@ -93,7 +93,11 @@ class ConnectionJQueueSdkWeb {
     storageKey: null,
     queueStatus: null,
     url: null,
-    socketConfig: null,
+    socketConfig: {
+      transports: ['websocket'],
+      reconnectionAttempts: 3,
+      reconnectionDelay: 1000,
+    },
   };
 
   private static statusInterval: NodeJS.Timeout | null = null;
@@ -253,6 +257,11 @@ class ConnectionJQueueSdkWeb {
     }
   }
 
+  private static getAdjustedPollInterval(position: number, baseInterval: number): number {
+    // Add 1 second (1000 ms) to pollInterval if position is 100 or greater
+    return position >= 100 ? baseInterval + (Number(position / 100) * 1000) : baseInterval;
+  }
+
   private static updateQueueStatus(data: StatusResponse['data'], popupConfig: PopupConfig): void {
     if (!data) {
       this.log('Invalid status response received', 'warn');
@@ -296,17 +305,17 @@ class ConnectionJQueueSdkWeb {
     if (typeof io === 'undefined') {
       throw new Error('Socket.IO client is not loaded. Please include socket.io-client before j-queue-sdk-web.');
     }
-
+    const socketConfigDefault = { transports: ['websocket'], reconnectionAttempts: 3, reconnectionDelay: 1000, ...socketConfig };
     this.state.storageKey = option.storageKey ?? null;
     this.state.url = url;
-    this.state.socketConfig = socketConfig;
+    this.state.socketConfig = socketConfigDefault;
     this.injectStyles(popupConfig);
 
     try {
       const joinResponse = await fetch(`${url}${this.CONFIG.API_ENDPOINTS.JOIN}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(socketConfig?.query ?? {}),
+        body: JSON.stringify(socketConfigDefault?.query ?? {}),
       });
       const joinData: StatusResponse = await joinResponse.json();
       if (!joinData.data?.uuid) {
@@ -321,15 +330,33 @@ class ConnectionJQueueSdkWeb {
       this.updateQueueStatus(joinData.data, popupConfig);
 
       if (joinData.data.status === OnlineQueueStatus.ACTIVE) {
-        this.setupSocket(url, socketConfig, joinData.data.uuid, customEvents, handleStatusUpdate);
+        this.setupSocket(url, socketConfigDefault, joinData.data.uuid, customEvents, handleStatusUpdate);
       } else if (joinData.data.status === OnlineQueueStatus.WAITING) {
+        // Adjust initial pollInterval based on joinData.data.position
+        let currentPollInterval = this.getAdjustedPollInterval(joinData.data.position, pollInterval);
         this.statusInterval = setInterval(async () => {
-          const response = await this.checkStatus(url, socketConfig?.query || {}, joinData.data.uuid);
+          const response = await this.checkStatus(url, socketConfigDefault?.query || {}, joinData.data.uuid);
           handleStatusUpdate(response);
-          if (response.data.status === OnlineQueueStatus.ACTIVE) {
-            this.setupSocket(url, socketConfig, joinData.data.uuid, customEvents, handleStatusUpdate);
+          // Re-adjust pollInterval based on latest position
+          const newPollInterval = this.getAdjustedPollInterval(response.data.position, pollInterval);
+          if (newPollInterval !== currentPollInterval) {
+            // Restart interval with new pollInterval
+            if (this.statusInterval) {
+              clearInterval(this.statusInterval);
+            }
+            currentPollInterval = newPollInterval;
+            this.statusInterval = setInterval(async () => {
+              const response = await this.checkStatus(url, socketConfigDefault?.query || {}, joinData.data.uuid);
+              handleStatusUpdate(response);
+              if (response.data.status === OnlineQueueStatus.ACTIVE) {
+                this.setupSocket(url, socketConfigDefault, joinData.data.uuid, customEvents, handleStatusUpdate);
+              }
+            }, currentPollInterval);
           }
-        }, pollInterval);
+          if (response.data.status === OnlineQueueStatus.ACTIVE) {
+            this.setupSocket(url, socketConfigDefault, joinData.data.uuid, customEvents, handleStatusUpdate);
+          }
+        }, currentPollInterval);
       }
 
       return { disconnect: () => this.disconnect() };
