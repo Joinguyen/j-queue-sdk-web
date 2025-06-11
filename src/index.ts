@@ -32,9 +32,9 @@ class ConnectionJQueueSdkWeb {
     TTL_INTERVAL: 5000, // Interval for emitting online-queue:set-ttl
     STORAGE_KEY: 'queue_token',
     API_ENDPOINTS: {
-      JOIN: '/api/v1/online-queue/join',
-      STATUS: '/api/v1/online-queue/status',
-      LEAVE: '/api/v1/online-queue/leave',
+      JOIN: '/join',
+      STATUS: '/status',
+      LEAVE: '/leave',
     },
     MESSAGES: {
       en: {
