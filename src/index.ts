@@ -159,7 +159,7 @@ class ConnectionJQueueSdkWeb {
     const { apiUrl, queueStatus } = this.state;
     if (!apiUrl || !queueStatus?.uuid) return;
     try {
-      const data = JSON.stringify({ uuid: queueStatus.uuid });
+      const data = new URLSearchParams(); data.set('uuid', queueStatus?.uuid);
       navigator.sendBeacon(`${apiUrl}${this.CONFIG.API_ENDPOINTS.LEAVE}`, data);
     } catch (error) {
       this.log('Leave API (sendBeacon) failed', 'error', error);

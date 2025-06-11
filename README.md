@@ -30,9 +30,8 @@ Include the `j-queue-sdk-web` script in your HTML and initialize it:
       option: { storageKey: 'queue_token' },
       socketConfig: {
         query: {
-          app_id: 'XXXXX',
-          service_name: 'NEWS',
-          ip_address: 'IP_ADDRESS_CLIENT', // Replace with actual IP
+          app_id: 'XXXXX', // Replace with actual App id
+          service_name: 'NEWS',  // Replace with actual Service name
         },
       },
       popupConfig: {
