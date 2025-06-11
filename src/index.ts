@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client';
-import { InitConfig, PopupConfig, OnlineQueueStatus } from './types';
+import { InitConfig, PopupConfig, OnlineQueueStatus, CustomEventUtils } from './types';
 
 interface ConnectionState {
   socket: Socket | null;
@@ -23,8 +23,9 @@ type QueryParams = Record<string, string | number | undefined>;
 
 class ConnectionJQueueSdkWeb {
   private static readonly CONFIG = {
-    STATUS_POLL_INTERVAL: 1000,
-    TTL_INTERVAL: 5000, // Interval for emitting online-queue:set-ttl (5 seconds)
+    STATUS_POLL_INTERVAL: 1000, // Restored to 1 seconds
+    TTL_INTERVAL: 5000, // Interval for emitting online-queue:set-ttl
+    STORAGE_KEY: 'queue_token',
     API_ENDPOINTS: {
       JOIN: '/api/v1/online-queue/join',
       STATUS: '/api/v1/online-queue/status',
@@ -93,28 +94,21 @@ class ConnectionJQueueSdkWeb {
     storageKey: null,
     queueStatus: null,
     url: null,
-    socketConfig: {
-      transports: ['websocket'],
-      reconnectionAttempts: 3,
-      reconnectionDelay: 1000,
-    },
+    socketConfig: null, // Removed redundant initialization
   };
 
   private static statusInterval: NodeJS.Timeout | null = null;
-  private static ttlInterval: NodeJS.Timeout | null = null; // Interval for set-ttl emission
-  private static statusListeners: ((status: { position: number; status: OnlineQueueStatus; uuid: string }) => void)[] = [];
+  private static ttlInterval: NodeJS.Timeout | null = null;
+  private static statusListeners: Array<(status: NonNullable<ConnectionState['queueStatus']>) => void> = [];
 
+  /** Logs messages with a prefix, supporting different log levels. */
   private static log(message: string, type: 'info' | 'warn' | 'error' = 'info', error?: unknown): void {
     const prefix = '[J-Queue]';
-    if (type === 'error') {
-      console.error(`${prefix} ${message}`, error);
-    } else if (type === 'warn') {
-      console.warn(`${prefix} ${message}`);
-    } else {
-      console.log(`${prefix} ${message}`);
-    }
+    const logMethod = type === 'error' ? console.error : type === 'warn' ? console.warn : console.log;
+    logMethod(`${prefix} ${message}`, error ?? '');
   }
 
+  /** Injects CSS styles for the popup loader if not already present. */
   private static injectStyles(popupConfig?: PopupConfig): void {
     if (typeof document === 'undefined' || document.querySelector('style[data-jqueue-styles]')) return;
     const styleEl = document.createElement('style');
@@ -123,6 +117,7 @@ class ConnectionJQueueSdkWeb {
     document.head.appendChild(styleEl);
   }
 
+  /** Creates a popup with the given HTML and optional styles. */
   private static createPopup(html: string, style?: string): void {
     if (typeof document === 'undefined') return;
     this.removePopup();
@@ -134,35 +129,38 @@ class ConnectionJQueueSdkWeb {
     this.state.popupEl = div;
   }
 
+  /** Removes the current popup from the DOM. */
   private static removePopup(): void {
     if (typeof document === 'undefined') return;
     this.state.popupEl?.remove();
     this.state.popupEl = null;
   }
 
+  /** Toggles navigation blocking with an onbeforeunload handler. */
   private static toggleNavigation(block: boolean): void {
     if (typeof window === 'undefined' || this.state.isNavigating === block) return;
     window.onbeforeunload = block
       ? () => {
-        if (this.state.queueStatus?.uuid && this.state.url) {
-          this.sendLeaveRequest();
-        }
+        if (this.state.queueStatus?.uuid && this.state.url) this.sendLeaveRequest();
         return 'Navigation is currently blocked.';
       }
       : null;
     this.state.isNavigating = block;
   }
 
+  /** Sends a leave request via navigator.sendBeacon. */
   private static sendLeaveRequest(): void {
-    if (!this.state.url || !this.state.queueStatus?.uuid) return;
+    const { url, queueStatus, socketConfig } = this.state;
+    if (!url || !queueStatus?.uuid) return;
     try {
-      const data = JSON.stringify({ ...this.state.socketConfig?.query, uuid: this.state.queueStatus.uuid });
-      navigator.sendBeacon(`${this.state.url}${this.CONFIG.API_ENDPOINTS.LEAVE}`, data);
+      const data = JSON.stringify({ ...socketConfig?.query, uuid: queueStatus.uuid });
+      navigator.sendBeacon(`${url}${this.CONFIG.API_ENDPOINTS.LEAVE}`, data);
     } catch (error) {
       this.log('Leave API (sendBeacon) failed', 'error', error);
     }
   }
 
+  /** Generates default popup content based on position and language. */
   private static getDefaultPopupContent(position: number, language: 'en' | 'ko' = 'ko', popupConfig?: PopupConfig): string {
     const messages = this.CONFIG.MESSAGES[language];
     const textColor = popupConfig?.textColor ?? '#276bff';
@@ -170,8 +168,7 @@ class ConnectionJQueueSdkWeb {
       <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
         <div style="padding: 20px; text-align: center;">
           <p style="font-size: 16px; line-height: 1.5; margin: 0 0 20px 0; color: ${textColor};">
-            ${messages.MESS_1}<br>
-            ${messages.MESS_2}
+            ${messages.MESS_1}<br>${messages.MESS_2}
           </p>
           <div style="position: relative; width: 150px; height: 150px; margin: 20px auto;">
             <span style="position: absolute; inset: 0;" class="loader-jqueue_popup"></span>
@@ -185,19 +182,22 @@ class ConnectionJQueueSdkWeb {
     `;
   }
 
-  private static setupSocket(url: string, socketConfig: InitConfig['socketConfig'], uuid: string, customEvents: InitConfig['customEvents'], handleStatusUpdate: (response: StatusResponse) => void): void {
-    const socket = io(url, {
-      ...socketConfig,
-      query: { ...socketConfig?.query, uuid },
-    });
+  /** Configures the socket with event handlers and periodic TTL emission. */
+  private static setupSocket(
+    url: string,
+    socketConfig: NonNullable<InitConfig['socketConfig']>,
+    uuid: string,
+    customEvents: InitConfig['customEvents'],
+    handleStatusUpdate: (response: StatusResponse) => void,
+  ): void {
+    const socket = io(url, { transports: ['websocket'], reconnectionAttempts: 3, reconnectionDelay: 1000, query: { ...socketConfig.query, uuid } });
     this.state.socket = socket;
 
     socket.on('connect', () => {
       this.log('Socket connected');
-      // Start emitting online-queue:set-ttl every 5 seconds
       this.ttlInterval = setInterval(() => {
         if (socket.connected) {
-          socket.emit('online-queue:set-ttl', { ...socketConfig?.query, uuid });
+          socket.emit('online-queue:set-ttl', { ...socketConfig.query, uuid });
           this.log('Emitted online-queue:set-ttl');
         }
       }, this.CONFIG.TTL_INTERVAL);
@@ -207,14 +207,13 @@ class ConnectionJQueueSdkWeb {
     socket.on('connect_error', (error) => this.log('Socket connection failed', 'error', error));
     socket.on('disconnect', (reason) => {
       this.log(`Socket disconnected: ${reason}`, 'warn');
-      // Clear ttlInterval on disconnect
       if (this.ttlInterval) {
         clearInterval(this.ttlInterval);
         this.ttlInterval = null;
       }
     });
 
-    Object.entries(customEvents || {}).forEach(([eventName, handler]) => {
+    for (const [eventName, handler] of Object.entries(customEvents ?? {})) {
       socket.on(eventName, (data: unknown) => {
         try {
           handler(data, {
@@ -227,42 +226,42 @@ class ConnectionJQueueSdkWeb {
           this.log(`Custom event handler ${eventName} failed`, 'error', error);
         }
       });
-    });
+    }
   }
 
-  public static addStatusListener(listener: (status: { position: number; status: OnlineQueueStatus; uuid: string }) => void): void {
+  /** Adds a listener for queue status updates. */
+  public static addStatusListener(listener: (status: NonNullable<ConnectionState['queueStatus']>) => void): void {
     this.statusListeners.push(listener);
   }
 
-  public static removeStatusListener(listener: (status: { position: number; status: OnlineQueueStatus; uuid: string }) => void): void {
+  /** Removes a queue status listener. */
+  public static removeStatusListener(listener: (status: NonNullable<ConnectionState['queueStatus']>) => void): void {
     this.statusListeners = this.statusListeners.filter((l) => l !== listener);
   }
 
+  /** Returns the current queue status. */
   public static getQueueStatus(): ConnectionState['queueStatus'] {
     return this.state.queueStatus;
   }
 
-  private static async checkStatus(url: string, query: QueryParams, uuid: string): Promise<StatusResponse> {
-    try {
-      const params = new URLSearchParams(query as any);
-      params.append('uuid', uuid);
-      const response = await fetch(`${url}${this.CONFIG.API_ENDPOINTS.STATUS}?${params.toString()}`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      return response.json();
-    } catch (error) {
-      this.log('Status check failed', 'error', error);
-      throw error;
-    }
+  /** Fetches the queue status from the server. */
+  private static async fetchStatus(url: string, query: QueryParams, uuid: string): Promise<StatusResponse> {
+    const params = new URLSearchParams(query as any);
+    params.append('uuid', uuid);
+    const response = await fetch(`${url}${this.CONFIG.API_ENDPOINTS.STATUS}?${params.toString()}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return response.json();
   }
 
+  /** Calculates the polling interval based on queue position. */
   private static getAdjustedPollInterval(position: number, baseInterval: number): number {
-    // Add 1 second (1000 ms) to pollInterval if position is 100 or greater
-    return position >= 100 ? baseInterval + (Number(position / 100) * 1000) : baseInterval;
+    return position >= 100 ? baseInterval + ((position / 100) * 1000) : baseInterval;
   }
 
-  private static updateQueueStatus(data: StatusResponse['data'], popupConfig: PopupConfig): void {
+  /** Updates the queue status and UI based on the server response. */
+  private static updateQueueStatus(data: StatusResponse['data'] | null, popupConfig: InitConfig['popupConfig']): void {
     if (!data) {
       this.log('Invalid status response received', 'warn');
       return;
@@ -285,78 +284,88 @@ class ConnectionJQueueSdkWeb {
         this.statusInterval = null;
       }
     } else {
-      const content = typeof popupConfig.content === 'function'
-        ? popupConfig.content(position)
-        : popupConfig.content ?? this.getDefaultPopupContent(position, popupConfig.language ?? 'ko', popupConfig);
-      this.createPopup(content, popupConfig.style);
+      const content =
+        typeof popupConfig?.content === 'function'
+          ? popupConfig.content(position)
+          : popupConfig?.content ?? this.getDefaultPopupContent(position, popupConfig?.language ?? 'ko', popupConfig);
+      this.createPopup(content, popupConfig?.style);
       this.toggleNavigation(true);
     }
   }
 
+  /** Starts polling the queue status for WAITING state. */
+  private static startStatusPolling(
+    url: string,
+    socketConfig: NonNullable<InitConfig['socketConfig']>,
+    uuid: string,
+    basePollInterval: number,
+    popupConfig: InitConfig['popupConfig'],
+    customEvents: InitConfig['customEvents'],
+  ): void {
+    let currentPollInterval = this.getAdjustedPollInterval(this.state.queueStatus?.position ?? 0, basePollInterval);
+
+    const pollStatus = async () => {
+      try {
+        const response = await this.fetchStatus(url, socketConfig.query ?? {}, uuid);
+        this.updateQueueStatus(response.data, popupConfig);
+
+        const newPollInterval = this.getAdjustedPollInterval(response.data.position, basePollInterval);
+        if (newPollInterval !== currentPollInterval && this.statusInterval) {
+          clearInterval(this.statusInterval);
+          currentPollInterval = newPollInterval;
+          this.statusInterval = setInterval(pollStatus, currentPollInterval);
+        }
+
+        if (response.data.status === OnlineQueueStatus.ACTIVE) {
+          this.setupSocket(url, socketConfig, uuid, customEvents, (res) => this.updateQueueStatus(res.data, popupConfig));
+        }
+      } catch (error) {
+        this.log('Status polling failed', 'error', error);
+      }
+    };
+
+    this.statusInterval = setInterval(pollStatus, currentPollInterval);
+  }
+
+  /** Initializes the queue SDK with the provided configuration. */
   public static async init({
     url,
     socketConfig = { transports: ['websocket'], reconnectionAttempts: 3, reconnectionDelay: 1000 },
     popupConfig = {},
     customEvents = {},
     pollInterval = this.CONFIG.STATUS_POLL_INTERVAL,
-    option = { storageKey: 'queue_token' },
-  }: InitConfig) {
+    option = { storageKey: this.CONFIG.STORAGE_KEY },
+  }: InitConfig): Promise<{ disconnect: () => void }> {
     if (!url) throw new Error('URL is required for initialization');
-    if (typeof io === 'undefined') {
-      throw new Error('Socket.IO client is not loaded. Please include socket.io-client before j-queue-sdk-web.');
-    }
-    const socketConfigDefault = { transports: ['websocket'], reconnectionAttempts: 3, reconnectionDelay: 1000, ...socketConfig };
-    this.state.storageKey = option.storageKey ?? null;
-    this.state.url = url;
-    this.state.socketConfig = socketConfigDefault;
+    if (typeof io === 'undefined') throw new Error('Socket.IO client is not loaded. Please include socket.io-client before j-queue-sdk-web.');
+
+    this.state = {
+      ...this.state,
+      storageKey: option.storageKey ?? this.CONFIG.STORAGE_KEY,
+      url,
+      socketConfig
+    };
     this.injectStyles(popupConfig);
 
     try {
       const joinResponse = await fetch(`${url}${this.CONFIG.API_ENDPOINTS.JOIN}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(socketConfigDefault?.query ?? {}),
+        body: JSON.stringify(socketConfig.query ?? {}),
       });
       const joinData: StatusResponse = await joinResponse.json();
+
       if (!joinData.data?.uuid) {
         this.log('Join response missing UUID', 'error');
         return { disconnect: () => this.disconnect() };
       }
 
-      const handleStatusUpdate = (response: StatusResponse): void => {
-        this.updateQueueStatus(response.data, popupConfig);
-      };
-
       this.updateQueueStatus(joinData.data, popupConfig);
 
       if (joinData.data.status === OnlineQueueStatus.ACTIVE) {
-        this.setupSocket(url, socketConfigDefault, joinData.data.uuid, customEvents, handleStatusUpdate);
+        this.setupSocket(url, socketConfig, joinData.data.uuid, customEvents, (res) => this.updateQueueStatus(res.data, popupConfig));
       } else if (joinData.data.status === OnlineQueueStatus.WAITING) {
-        // Adjust initial pollInterval based on joinData.data.position
-        let currentPollInterval = this.getAdjustedPollInterval(joinData.data.position, pollInterval);
-        this.statusInterval = setInterval(async () => {
-          const response = await this.checkStatus(url, socketConfigDefault?.query || {}, joinData.data.uuid);
-          handleStatusUpdate(response);
-          // Re-adjust pollInterval based on latest position
-          const newPollInterval = this.getAdjustedPollInterval(response.data.position, pollInterval);
-          if (newPollInterval !== currentPollInterval) {
-            // Restart interval with new pollInterval
-            if (this.statusInterval) {
-              clearInterval(this.statusInterval);
-            }
-            currentPollInterval = newPollInterval;
-            this.statusInterval = setInterval(async () => {
-              const response = await this.checkStatus(url, socketConfigDefault?.query || {}, joinData.data.uuid);
-              handleStatusUpdate(response);
-              if (response.data.status === OnlineQueueStatus.ACTIVE) {
-                this.setupSocket(url, socketConfigDefault, joinData.data.uuid, customEvents, handleStatusUpdate);
-              }
-            }, currentPollInterval);
-          }
-          if (response.data.status === OnlineQueueStatus.ACTIVE) {
-            this.setupSocket(url, socketConfigDefault, joinData.data.uuid, customEvents, handleStatusUpdate);
-          }
-        }, currentPollInterval);
+        this.startStatusPolling(url, socketConfig, joinData.data.uuid, pollInterval, popupConfig, customEvents);
       }
 
       return { disconnect: () => this.disconnect() };
@@ -366,8 +375,9 @@ class ConnectionJQueueSdkWeb {
     }
   }
 
+  /** Cleans up resources and resets state. */
   private static cleanup(): void {
-    if (typeof sessionStorage !== 'undefined' && this.state.storageKey) {
+    if (this.state.storageKey && typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem(this.state.storageKey);
     }
     if (this.statusInterval) {
@@ -392,6 +402,7 @@ class ConnectionJQueueSdkWeb {
     this.statusListeners = [];
   }
 
+  /** Disconnects the socket and cleans up resources. */
   private static disconnect(): void {
     if (this.state.socket?.connected && this.state.queueStatus?.uuid && this.state.url) {
       this.sendLeaveRequest();
@@ -409,7 +420,7 @@ declare global {
 
 if (typeof window !== 'undefined') {
   window.ConnectionJQueueSdkWeb = ConnectionJQueueSdkWeb;
-  console.log('Initialized on window');
+  // console.log('Initialized on window');
 }
 
 export default ConnectionJQueueSdkWeb;
