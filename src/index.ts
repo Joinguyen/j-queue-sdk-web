@@ -1,8 +1,7 @@
-import { io, Socket } from 'socket.io-client';
 import { InitConfig, PopupConfig, OnlineQueueStatus, CustomEventUtils } from './types';
 
 interface ConnectionState {
-  socket: Socket | null;
+  socket: WebSocket | null;
   popupEl: HTMLElement | null;
   isNavigating: boolean;
   storageKey: string | null;
@@ -19,11 +18,16 @@ interface StatusResponse {
   };
 }
 
+interface WebSocketMessage {
+  event: string;
+  data: any;
+}
+
 type QueryParams = Record<string, string | number | undefined>;
 
 class ConnectionJQueueSdkWeb {
   private static readonly CONFIG = {
-    STATUS_POLL_INTERVAL: 1000, // Restored to 1 seconds
+    STATUS_POLL_INTERVAL: 1000,
     TTL_INTERVAL: 5000, // Interval for emitting online-queue:set-ttl
     STORAGE_KEY: 'queue_token',
     API_ENDPOINTS: {
@@ -39,7 +43,7 @@ class ConnectionJQueueSdkWeb {
       },
       ko: {
         MESS_1: '접속한 순서대로 순차적 진행 중입니다.',
-        MESS_2: '빠른 서비스 진행을 위해 최선을 다하고 있습니다.',
+        MESS_2: '빠른 dịch vụ 진행을 위해 최선을 다하고 있습니다.',
         MESS_3: '대기순번',
       },
     },
@@ -94,7 +98,7 @@ class ConnectionJQueueSdkWeb {
     storageKey: null,
     queueStatus: null,
     url: null,
-    socketConfig: null, // Removed redundant initialization
+    socketConfig: null,
   };
 
   private static statusInterval: NodeJS.Timeout | null = null;
@@ -153,7 +157,7 @@ class ConnectionJQueueSdkWeb {
     const { url, queueStatus, socketConfig } = this.state;
     if (!url || !queueStatus?.uuid) return;
     try {
-      const data = JSON.stringify({ ...socketConfig?.query, uuid: queueStatus.uuid });
+      const data = JSON.stringify({ uuid: queueStatus.uuid });
       navigator.sendBeacon(`${url}${this.CONFIG.API_ENDPOINTS.LEAVE}`, data);
     } catch (error) {
       this.log('Leave API (sendBeacon) failed', 'error', error);
@@ -182,7 +186,7 @@ class ConnectionJQueueSdkWeb {
     `;
   }
 
-  /** Configures the socket with event handlers and periodic TTL emission. */
+  /** Configures the WebSocket with event handlers and periodic TTL emission. */
   private static setupSocket(
     url: string,
     socketConfig: NonNullable<InitConfig['socketConfig']>,
@@ -190,43 +194,50 @@ class ConnectionJQueueSdkWeb {
     customEvents: InitConfig['customEvents'],
     handleStatusUpdate: (response: StatusResponse) => void,
   ): void {
-    const socket = io(url, { transports: ['websocket'], reconnectionAttempts: 3, reconnectionDelay: 1000, query: { ...socketConfig.query, uuid } });
+    const params = new URLSearchParams({ ...socketConfig.query, uuid } as any);
+    const wsUrl = `${url.replace(/^http/, 'ws')}?${params.toString()}`;
+    const socket = new WebSocket(wsUrl);
     this.state.socket = socket;
 
-    socket.on('connect', () => {
-      this.log('Socket connected');
+    socket.onopen = () => {
+      this.log('WebSocket connected');
       this.ttlInterval = setInterval(() => {
-        if (socket.connected) {
-          socket.emit('online-queue:set-ttl', { ...socketConfig.query, uuid });
-          this.log('Emitted online-queue:set-ttl');
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ event: 'online-queue:set-ttl', data: { ...socketConfig.query, uuid } }));
+          this.log('Sent online-queue:set-ttl');
         }
       }, this.CONFIG.TTL_INTERVAL);
-    });
+    };
 
-    socket.on('online-queue:status', handleStatusUpdate);
-    socket.on('connect_error', (error) => this.log('Socket connection failed', 'error', error));
-    socket.on('disconnect', (reason) => {
-      this.log(`Socket disconnected: ${reason}`, 'warn');
-      if (this.ttlInterval) {
-        clearInterval(this.ttlInterval);
-        this.ttlInterval = null;
-      }
-    });
-
-    for (const [eventName, handler] of Object.entries(customEvents ?? {})) {
-      socket.on(eventName, (data: unknown) => {
-        try {
-          handler(data, {
+    socket.onmessage = (event) => {
+      try {
+        const message: WebSocketMessage = JSON.parse(event.data);
+        if (message.event === 'online-queue:status') {
+          handleStatusUpdate(message.data);
+        } else if (customEvents && message.event in customEvents) {
+          customEvents[message.event](message.data, {
             createPopup: this.createPopup.bind(this),
             removePopup: this.removePopup.bind(this),
             preventNavigation: () => this.toggleNavigation(true),
             allowNavigation: () => this.toggleNavigation(false),
           });
-        } catch (error) {
-          this.log(`Custom event handler ${eventName} failed`, 'error', error);
         }
-      });
-    }
+      } catch (error) {
+        this.log('WebSocket message handling failed', 'error', error);
+      }
+    };
+
+    socket.onerror = (error) => {
+      this.log('WebSocket error', 'error', error);
+    };
+
+    socket.onclose = (event) => {
+      this.log(`WebSocket closed: code=${event.code}, reason=${event.reason}`, 'warn');
+      if (this.ttlInterval) {
+        clearInterval(this.ttlInterval);
+        this.ttlInterval = null;
+      }
+    };
   }
 
   /** Adds a listener for queue status updates. */
@@ -246,7 +257,7 @@ class ConnectionJQueueSdkWeb {
 
   /** Fetches the queue status from the server. */
   private static async fetchStatus(url: string, query: QueryParams, uuid: string): Promise<StatusResponse> {
-    const params = new URLSearchParams(query as any);
+    const params = new URLSearchParams({});
     params.append('uuid', uuid);
     const response = await fetch(`${url}${this.CONFIG.API_ENDPOINTS.STATUS}?${params.toString()}`, {
       method: 'GET',
@@ -257,7 +268,7 @@ class ConnectionJQueueSdkWeb {
 
   /** Calculates the polling interval based on queue position. */
   private static getAdjustedPollInterval(position: number, baseInterval: number): number {
-    return position >= 100 ? baseInterval + ((position / 100) * 1000) : baseInterval;
+    return position >= 100 ? (baseInterval + (position / 100) * 1000) : baseInterval;
   }
 
   /** Updates the queue status and UI based on the server response. */
@@ -330,20 +341,20 @@ class ConnectionJQueueSdkWeb {
   /** Initializes the queue SDK with the provided configuration. */
   public static async init({
     url,
-    socketConfig = { transports: ['websocket'], reconnectionAttempts: 3, reconnectionDelay: 1000 },
+    socketConfig = {},
     popupConfig = {},
     customEvents = {},
     pollInterval = this.CONFIG.STATUS_POLL_INTERVAL,
     option = { storageKey: this.CONFIG.STORAGE_KEY },
   }: InitConfig): Promise<{ disconnect: () => void }> {
     if (!url) throw new Error('URL is required for initialization');
-    if (typeof io === 'undefined') throw new Error('Socket.IO client is not loaded. Please include socket.io-client before j-queue-sdk-web.');
+    if (typeof WebSocket === 'undefined') throw new Error('WebSocket is not supported in this environment.');
 
     this.state = {
       ...this.state,
       storageKey: option.storageKey ?? this.CONFIG.STORAGE_KEY,
       url,
-      socketConfig
+      socketConfig,
     };
     this.injectStyles(popupConfig);
 
@@ -402,12 +413,12 @@ class ConnectionJQueueSdkWeb {
     this.statusListeners = [];
   }
 
-  /** Disconnects the socket and cleans up resources. */
+  /** Disconnects the WebSocket and cleans up resources. */
   private static disconnect(): void {
-    if (this.state.socket?.connected && this.state.queueStatus?.uuid && this.state.url) {
+    if (this.state.socket?.readyState === WebSocket.OPEN && this.state.queueStatus?.uuid && this.state.url) {
       this.sendLeaveRequest();
     }
-    this.state.socket?.disconnect();
+    this.state.socket?.close();
     this.cleanup();
   }
 }
