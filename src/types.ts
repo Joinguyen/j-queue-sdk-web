@@ -1,10 +1,10 @@
 export interface PopupConfig {
     content?: string | ((position: number) => string);
-    style?: string;
     language?: 'en' | 'ko';
     textColor?: string;
     loaderGradientStart?: string;
     loaderGradientEnd?: string;
+    style?: string;
 }
 
 export enum OnlineQueueStatus {
@@ -22,15 +22,13 @@ export interface CustomEventUtils {
 export type QueryParams = Record<string, string | number | undefined>;
 
 export interface InitConfig {
-    url: string;
+    wsUrl: string;
+    apiUrl: string;
     socketConfig?: {
-        transports?: string[];
-        reconnectionAttempts?: number;
-        reconnectionDelay?: number;
         query?: QueryParams;
     };
     popupConfig?: PopupConfig;
-    customEvents?: Record<string, (data: unknown, utils: CustomEventUtils) => void>;
+    customEvents?: Record<string, (data: any, utils: CustomEventUtils) => void>;
     pollInterval?: number;
     option?: {
         storageKey?: string;

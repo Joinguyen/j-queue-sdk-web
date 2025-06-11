@@ -1,6 +1,6 @@
 # j-queue-sdk-web
 
-A TypeScript package for managing WebSocket connections and controlling web access by displaying a customizable full-screen popup when users are in a queue. It integrates with a WebSocket server to handle queue status updates and navigation restrictions.
+A TypeScript package for managing WebSocket connections and controlling web access by displaying a customizable full-screen popup when users are in a queue. It integrates with a WebSocket server to handle queue status updates and navigation restrictions using the native WebSocket API.
 
 ## Installation
 
@@ -10,80 +10,36 @@ Install the package via npm:
 npm install j-queue-sdk-web
 ```
 
-Ensure you have the Socket.IO client included in your project:
-
-```bash
-npm install socket.io-client
-```
-
-For browser environments, include the Socket.IO client script:
-
-```html
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-```
+No additional WebSocket libraries are required, as the SDK uses the browser's native WebSocket API.
 
 ## Usage
 
-### Usage in JavaScript/TypeScript
+### Usage in Browser with `<script>`
 
-1. Import and initialize the package:
-
-```typescript
-import ConnectionJQueueSdkWeb from 'j-queue-sdk-web';
-
-const connection = ConnectionJQueueSdkWeb.init({
-  url: 'wss://queue-server.example.com',
-  option: { storageKey: 'jqueue_uuid' }, // UUID will be stored with this key
-  socketConfig: {
-    transports: ['websocket'],
-    reconnectionAttempts: 3,
-    reconnectionDelay: 1000,
-    query: {
-      app_id: 'XXXXX',
-      service_name: 'NEWS',
-      ip_address: 'IP_ADDRESS_CLIENT',
-    },
-  },
-  popupConfig: {
-    language: 'en', // or 'ko' for Korean
-    textColor: '#276bff', // Text color for the popup
-    loaderGradientStart: '#276bff', // Starting color of the loader gradient
-    loaderGradientEnd: 'rgba(39,107,255,0.05)', // Ending color of the loader gradient
-  },
-  pollInterval: 2000,
-});
-
-// Disconnect when done
-connection.disconnect();
-```
-
-Or, in a browser environment:
+Include the `j-queue-sdk-web` script in your HTML and initialize it:
 
 ```html
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script src="https://unpkg.com/j-queue-sdk-web@<version>/dist/j-queue-sdk-web.js"></script>
 <script>
   try {
     // Handle default export
     const JQueueSdk = window.ConnectionJQueueSdkWeb.default || window.ConnectionJQueueSdkWeb;
     const connection = JQueueSdk.init({
-      url: 'wss://queue-server.example.com', // Use wss:// for WebSocket
+      wsUrl: 'wss://queue-server.example.com', // WebSocket server URL
+      apiUrl: 'https://api.example.com', // API server URL
       option: { storageKey: 'queue_token' },
-      popupConfig: {
-        language: 'en', // 'en' or 'ko'
-        textColor: '#276bff',
-        loaderGradientStart: '#276bff',
-        loaderGradientEnd: 'rgba(39,107,255,0.05)',
-      },
       socketConfig: {
-        transports: ['websocket'],
-        reconnectionAttempts: 3,
-        reconnectionDelay: 1000,
         query: {
           app_id: 'XXXXX',
           service_name: 'NEWS',
           ip_address: 'IP_ADDRESS_CLIENT', // Replace with actual IP
         },
+      },
+      popupConfig: {
+        language: 'en', // 'en' or 'ko'
+        textColor: '#276bff',
+        loaderGradientStart: '#276bff',
+        loaderGradientEnd: 'rgba(39,107,255,0.05)',
       },
       customEvents: {
         disconnect: (data, utils) => {
@@ -102,6 +58,7 @@ Or, in a browser environment:
           console.log('Queue status:', data);
         },
       },
+      pollInterval: 1000, // Poll interval in milliseconds
     });
 
     // Clean up on page unload
@@ -114,94 +71,19 @@ Or, in a browser environment:
 </script>
 ```
 
-## Notes
-- **Socket.IO Client**: Load `socket.io-client@4.7.5` before `j-queue-sdk-web`.
+### Notes
 - **Default Export**: The script exports `ConnectionJQueueSdkWeb` as `ConnectionJQueueSdkWeb.default`. The code handles both cases.
 - **Error Handling**: Use `onerror` on the script tag and try-catch to handle errors.
 - **Beacon**: Update the `navigator.sendBeacon` URL (`https://example.com/log-disconnect`) to your actual endpoint.
 
-### Usage in React
-
-To use `j-queue-sdk-web` in a React application, initialize the WebSocket connection in a component using the `useEffect` hook to manage the connection lifecycle. Below is an example:
-
-1. Install the package and dependencies in your React project:
-
-```bash
-npm install j-queue-sdk-web socket.io-client
-```
-
-2. Create a component to initialize the WebSocket connection:
-
-```tsx
-import { useEffect, useState } from 'react';
-import ConnectionJQueueSdkWeb from 'j-queue-sdk-web';
-
-const WebSocketComponent = () => {
-  useEffect(() => {
-    const connection = ConnectionJQueueSdkWeb.init({
-      url: 'wss://queue-server.example.com',
-      option: { storageKey: 'jqueue_uuid' }, // UUID will be stored with this key
-      socketConfig: {
-        transports: ['websocket'],
-        reconnectionAttempts: 3,
-        reconnectionDelay: 1000,
-        query: {
-          app_id: 'XXXXX',
-          service_name: 'NEWS',
-          ip_address: 'IP_ADDRESS_CLIENT',
-        },
-      },
-      popupConfig: {
-        language: 'en', // en | ko,
-        textColor: '#276bff', // Text color for the popup
-        loaderGradientStart: '#276bff', // Starting color of the loader gradient
-        loaderGradientEnd: 'rgba(39,107,255,0.05)', // Ending color of the loader gradient
-      },
-    });
-
-    return () => {
-      connection.disconnect();
-    };
-  }, []);
-
-  return <></>;
-};
-
-export default WebSocketComponent;
-```
-
-3. Use the component in your app:
-
-```tsx
-import WebSocketComponent from './WebSocketComponent';
-
-function App() {
-  return (
-    <div>
-      <h1>My React App</h1>
-      <WebSocketComponent />
-    </div>
-  );
-}
-
-export default App;
-```
-
-#### Notes for React Usage:
-- The `useEffect` hook ensures the WebSocket connection is initialized on mount and disconnected on unmount, preventing memory leaks.
-- Customize `popupConfig` and `customEvents` to match your application's UI and requirements.
-- Ensure the WebSocket server supports the `online-queue:status` event with the data format `{ data: { uuid: string, position: number, status: number } }`.
-
 ## Configuration Options
 
-- `url` (string, required): WebSocket server URL (e.g., `wss://queue-server.example.com`).
+- `wsUrl` (string, required): WebSocket server URL (e.g., `wss://queue-server.example.com`).
+- `apiUrl` (string, required): API server URL for HTTP requests (e.g., `https://api.example.com`).
 - `option` (object, optional): Additional configuration options for the SDK.
-  - `storageKey` (string): The key used to store the UUID in `localStorage` for persisting queue session data (e.g., `'jqueue_uuid'`). This allows the SDK to retrieve the UUID across page reloads or sessions, ensuring continuity in queue tracking.
-- `socketConfig` (object, optional): Socket.IO configuration options.
-  - `transports` (string[]): Transport methods (default: `['websocket']`).
-  - `reconnectionAttempts` (number): Number of reconnection attempts (default: `3`).
-  - `reconnectionDelay` (number): Delay between reconnection attempts in milliseconds (default: `1000`).
-  - `query` (object): Additional query parameters sent to the server (e.g., `{ app_id: 'XXXXX', service_name: 'NEWS' }`).
+  - `storageKey` (string): The key used to store the UUID in `sessionStorage` for persisting queue session data (e.g., `'queue_token'`). This allows the SDK to retrieve the UUID across page reloads, ensuring continuity in queue tracking.
+- `socketConfig` (object, optional): WebSocket configuration options.
+  - `query` (object): Additional query parameters sent to the WebSocket server (e.g., `{ app_id: 'XXXXX', service_name: 'NEWS' }`).
 - `popupConfig` (object, optional):
   - `language` ('en' | 'ko'): Language for default popup content (default: `'ko'`).
   - `style` (string): Custom CSS for the popup.
@@ -210,18 +92,21 @@ export default App;
   - `loaderGradientStart` (string): Starting color of the loader gradient (e.g., `'#276bff'`). Defines the initial color of the loading animation.
   - `loaderGradientEnd` (string): Ending color of the loader gradient (e.g., `'rgba(39,107,255,0.05)'`). Defines the final color of the loading animation.
 - `customEvents` (object, optional): Key-value pairs where the key is the event name and the value is a handler function. The handler receives event `data` and utilities `{ createPopup, removePopup, preventNavigation, allowNavigation }`.
-- `pollInterval` (number, optional): Interval for polling queue status in milliseconds (default: `2000`).
+- `pollInterval` (number, optional): Interval for polling queue status in milliseconds (default: `1000`). The interval adjusts dynamically based on queue position (adds `(position / 100) * 1000`ms for positions >= 100).
 
 ## Features
 
-- Connects to a WebSocket server to monitor queue status.
-- Receives `{ data: { uuid: string, position: number, status: number } }` from the server via the `online-queue:status` event.
-- If `status === 2` (ACTIVE), removes the popup and allows navigation.
-- If `status === 1` (WAITING), displays a customizable full-screen popup with the queue `position` and prevents navigation.
+- Connects to a WebSocket server using the native WebSocket API to monitor queue status.
+- Makes HTTP API calls to join, check status, and leave the queue.
+- Receives `{ data: { uuid: string, position: number, status: string } }` from the WebSocket server via the `online-queue:status` event.
+- If `status === 'ACTIVE'`, removes the popup and allows navigation.
+- If `status === 'WAITING'`, displays a customizable full-screen popup with the queue `position` and prevents navigation.
 - Supports custom WebSocket events via `customEvents`.
 - Provides utilities (`createPopup`, `removePopup`, `preventNavigation`, `allowNavigation`) for custom event handlers.
 - Handles connection errors and disconnections gracefully.
 - Includes default popup styling with a loading animation and multilingual support (English and Korean).
+- Sends periodic `online-queue:set-ttl` messages to maintain queue position.
+- Uses `navigator.sendBeacon` to notify the server when leaving the queue.
 
 ## Development
 
@@ -243,7 +128,7 @@ Run tests using Jest in a jsdom environment:
 npm test
 ```
 
-Tests are located in the `tests` directory and cover initialization, event handling, and disconnection logic.
+Tests are located in the `tests` directory and cover initialization, event handling, polling, and disconnection logic.
 
 ## Security Note
 

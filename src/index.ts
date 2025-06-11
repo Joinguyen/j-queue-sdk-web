@@ -6,7 +6,8 @@ interface ConnectionState {
   isNavigating: boolean;
   storageKey: string | null;
   queueStatus: { position: number; status: OnlineQueueStatus; uuid: string } | null;
-  url: string | null;
+  wsUrl: string | null;
+  apiUrl: string | null;
   socketConfig: InitConfig['socketConfig'] | null;
 }
 
@@ -43,7 +44,7 @@ class ConnectionJQueueSdkWeb {
       },
       ko: {
         MESS_1: '접속한 순서대로 순차적 진행 중입니다.',
-        MESS_2: '빠른 dịch vụ 진행을 위해 최선을 다하고 있습니다.',
+        MESS_2: '빠른 서비스 진행을 위해 최선을 다하고 있습니다.',
         MESS_3: '대기순번',
       },
     },
@@ -97,7 +98,8 @@ class ConnectionJQueueSdkWeb {
     isNavigating: false,
     storageKey: null,
     queueStatus: null,
-    url: null,
+    wsUrl: null,
+    apiUrl: null,
     socketConfig: null,
   };
 
@@ -145,7 +147,7 @@ class ConnectionJQueueSdkWeb {
     if (typeof window === 'undefined' || this.state.isNavigating === block) return;
     window.onbeforeunload = block
       ? () => {
-        if (this.state.queueStatus?.uuid && this.state.url) this.sendLeaveRequest();
+        if (this.state.queueStatus?.uuid && this.state.apiUrl) this.sendLeaveRequest();
         return 'Navigation is currently blocked.';
       }
       : null;
@@ -154,11 +156,11 @@ class ConnectionJQueueSdkWeb {
 
   /** Sends a leave request via navigator.sendBeacon. */
   private static sendLeaveRequest(): void {
-    const { url, queueStatus, socketConfig } = this.state;
-    if (!url || !queueStatus?.uuid) return;
+    const { apiUrl, queueStatus } = this.state;
+    if (!apiUrl || !queueStatus?.uuid) return;
     try {
       const data = JSON.stringify({ uuid: queueStatus.uuid });
-      navigator.sendBeacon(`${url}${this.CONFIG.API_ENDPOINTS.LEAVE}`, data);
+      navigator.sendBeacon(`${apiUrl}${this.CONFIG.API_ENDPOINTS.LEAVE}`, data);
     } catch (error) {
       this.log('Leave API (sendBeacon) failed', 'error', error);
     }
@@ -188,15 +190,14 @@ class ConnectionJQueueSdkWeb {
 
   /** Configures the WebSocket with event handlers and periodic TTL emission. */
   private static setupSocket(
-    url: string,
+    wsUrl: string,
     socketConfig: NonNullable<InitConfig['socketConfig']>,
     uuid: string,
     customEvents: InitConfig['customEvents'],
     handleStatusUpdate: (response: StatusResponse) => void,
   ): void {
-    const params = new URLSearchParams({ ...socketConfig.query, uuid } as any);
-    const wsUrl = `${url.replace(/^http/, 'ws')}?${params.toString()}`;
-    const socket = new WebSocket(wsUrl);
+    const params = new URLSearchParams({ ...socketConfig.query, uuid });
+    const socket = new WebSocket(`${wsUrl}?${params.toString()}`);
     this.state.socket = socket;
 
     socket.onopen = () => {
@@ -256,10 +257,10 @@ class ConnectionJQueueSdkWeb {
   }
 
   /** Fetches the queue status from the server. */
-  private static async fetchStatus(url: string, query: QueryParams, uuid: string): Promise<StatusResponse> {
+  private static async fetchStatus(apiUrl: string, query: QueryParams, uuid: string): Promise<StatusResponse> {
     const params = new URLSearchParams({});
     params.append('uuid', uuid);
-    const response = await fetch(`${url}${this.CONFIG.API_ENDPOINTS.STATUS}?${params.toString()}`, {
+    const response = await fetch(`${apiUrl}${this.CONFIG.API_ENDPOINTS.STATUS}?${params.toString()}`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
@@ -268,7 +269,7 @@ class ConnectionJQueueSdkWeb {
 
   /** Calculates the polling interval based on queue position. */
   private static getAdjustedPollInterval(position: number, baseInterval: number): number {
-    return position >= 100 ? (baseInterval + (position / 100) * 1000) : baseInterval;
+    return position >= 100 ? baseInterval + (position / 100) * 1000 : baseInterval;
   }
 
   /** Updates the queue status and UI based on the server response. */
@@ -306,7 +307,8 @@ class ConnectionJQueueSdkWeb {
 
   /** Starts polling the queue status for WAITING state. */
   private static startStatusPolling(
-    url: string,
+    wsUrl: string,
+    apiUrl: string,
     socketConfig: NonNullable<InitConfig['socketConfig']>,
     uuid: string,
     basePollInterval: number,
@@ -317,7 +319,7 @@ class ConnectionJQueueSdkWeb {
 
     const pollStatus = async () => {
       try {
-        const response = await this.fetchStatus(url, socketConfig.query ?? {}, uuid);
+        const response = await this.fetchStatus(apiUrl, socketConfig.query ?? {}, uuid);
         this.updateQueueStatus(response.data, popupConfig);
 
         const newPollInterval = this.getAdjustedPollInterval(response.data.position, basePollInterval);
@@ -328,7 +330,7 @@ class ConnectionJQueueSdkWeb {
         }
 
         if (response.data.status === OnlineQueueStatus.ACTIVE) {
-          this.setupSocket(url, socketConfig, uuid, customEvents, (res) => this.updateQueueStatus(res.data, popupConfig));
+          this.setupSocket(wsUrl, socketConfig, uuid, customEvents, (res) => this.updateQueueStatus(res.data, popupConfig));
         }
       } catch (error) {
         this.log('Status polling failed', 'error', error);
@@ -340,26 +342,28 @@ class ConnectionJQueueSdkWeb {
 
   /** Initializes the queue SDK with the provided configuration. */
   public static async init({
-    url,
+    wsUrl,
+    apiUrl,
     socketConfig = {},
     popupConfig = {},
     customEvents = {},
     pollInterval = this.CONFIG.STATUS_POLL_INTERVAL,
     option = { storageKey: this.CONFIG.STORAGE_KEY },
   }: InitConfig): Promise<{ disconnect: () => void }> {
-    if (!url) throw new Error('URL is required for initialization');
+    if (!wsUrl || !apiUrl) throw new Error('Both wsUrl and apiUrl are required for initialization');
     if (typeof WebSocket === 'undefined') throw new Error('WebSocket is not supported in this environment.');
 
     this.state = {
       ...this.state,
       storageKey: option.storageKey ?? this.CONFIG.STORAGE_KEY,
-      url,
+      wsUrl,
+      apiUrl,
       socketConfig,
     };
     this.injectStyles(popupConfig);
 
     try {
-      const joinResponse = await fetch(`${url}${this.CONFIG.API_ENDPOINTS.JOIN}`, {
+      const joinResponse = await fetch(`${apiUrl}${this.CONFIG.API_ENDPOINTS.JOIN}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(socketConfig.query ?? {}),
@@ -374,9 +378,9 @@ class ConnectionJQueueSdkWeb {
       this.updateQueueStatus(joinData.data, popupConfig);
 
       if (joinData.data.status === OnlineQueueStatus.ACTIVE) {
-        this.setupSocket(url, socketConfig, joinData.data.uuid, customEvents, (res) => this.updateQueueStatus(res.data, popupConfig));
+        this.setupSocket(wsUrl, socketConfig, joinData.data.uuid, customEvents, (res) => this.updateQueueStatus(res.data, popupConfig));
       } else if (joinData.data.status === OnlineQueueStatus.WAITING) {
-        this.startStatusPolling(url, socketConfig, joinData.data.uuid, pollInterval, popupConfig, customEvents);
+        this.startStatusPolling(wsUrl, apiUrl, socketConfig, joinData.data.uuid, pollInterval, popupConfig, customEvents);
       }
 
       return { disconnect: () => this.disconnect() };
@@ -407,7 +411,8 @@ class ConnectionJQueueSdkWeb {
       isNavigating: false,
       storageKey: null,
       queueStatus: null,
-      url: null,
+      wsUrl: null,
+      apiUrl: null,
       socketConfig: null,
     };
     this.statusListeners = [];
@@ -415,7 +420,7 @@ class ConnectionJQueueSdkWeb {
 
   /** Disconnects the WebSocket and cleans up resources. */
   private static disconnect(): void {
-    if (this.state.socket?.readyState === WebSocket.OPEN && this.state.queueStatus?.uuid && this.state.url) {
+    if (this.state.socket?.readyState === WebSocket.OPEN && this.state.queueStatus?.uuid && this.state.apiUrl) {
       this.sendLeaveRequest();
     }
     this.state.socket?.close();
