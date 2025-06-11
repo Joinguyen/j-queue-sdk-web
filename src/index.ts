@@ -24,7 +24,7 @@ type QueryParams = Record<string, string | number | undefined>;
 
 class ConnectionJQueueSdkWeb {
   private static readonly CONFIG = {
-    TTL_INTERVAL: 5000, // Base interval for online-queue:set-ttl
+    TTL_INTERVAL: 5000, // Base interval for online-queue:status
     STORAGE_KEY: 'queue_token',
     API_ENDPOINTS: {
       LEAVE: '/leave',
@@ -185,6 +185,54 @@ class ConnectionJQueueSdkWeb {
     return position >= 100 ? baseInterval + (position / 100) * 1000 : baseInterval;
   }
 
+  /** Handles status updates from online-queue:join or online-queue:status events. */
+  private static handleStatusUpdate(data: StatusResponse, popupConfig: InitConfig['popupConfig'], currentTtlInterval: { value: number }): void {
+    if (!data?.data) {
+      this.log('Invalid status response received', 'warn');
+      return;
+    }
+
+    const { status, position, uuid } = data.data;
+    this.state.queueStatus = { status, position, uuid };
+
+    if (this.state.storageKey && typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(this.state.storageKey, uuid);
+    }
+
+    this.statusListeners.forEach((listener) => listener({ status, position, uuid }));
+
+    // Update TTL interval based on new position
+    const newTtlInterval = this.getAdjustedPollInterval(position, this.CONFIG.TTL_INTERVAL);
+    if (newTtlInterval !== currentTtlInterval.value) {
+      currentTtlInterval.value = newTtlInterval;
+      this.startTtlEmission(currentTtlInterval.value);
+    }
+
+    // Handle popup and navigation
+    if (status === OnlineQueueStatus.ACTIVE) {
+      this.removePopup();
+      this.toggleNavigation(false);
+    } else {
+      const content =
+        typeof popupConfig?.content === 'function'
+          ? popupConfig.content(position)
+          : popupConfig?.content ?? this.getDefaultPopupContent(position, popupConfig?.language ?? 'ko', popupConfig);
+      this.createPopup(content, popupConfig?.style);
+      this.toggleNavigation(true);
+    }
+  }
+
+  /** Starts periodic TTL emission with the specified interval. */
+  private static startTtlEmission(interval: number): void {
+    if (this.ttlInterval) clearInterval(this.ttlInterval);
+    this.ttlInterval = setInterval(() => {
+      if (this.state.socket?.connected && this.state.queueStatus?.uuid && this.state.socketConfig) {
+        this.state.socket.emit('online-queue:status', { ...this.state.socketConfig.query, uuid: this.state.queueStatus.uuid });
+        this.log('Sent online-queue:status');
+      }
+    }, interval);
+  }
+
   /** Configures the Socket.IO connection with event handlers and periodic TTL emission. */
   private static setupSocket(
     wsUrl: string,
@@ -201,57 +249,25 @@ class ConnectionJQueueSdkWeb {
     });
     this.state.socket = socket;
 
-    let currentTtlInterval = this.getAdjustedPollInterval(0, this.CONFIG.TTL_INTERVAL);
-
-    const startTtlEmission = () => {
-      if (this.ttlInterval) clearInterval(this.ttlInterval);
-      this.ttlInterval = setInterval(() => {
-        if (socket.connected && this.state.queueStatus?.uuid) {
-          socket.emit('online-queue:set-ttl', { ...socketConfig.query, uuid: this.state.queueStatus.uuid });
-          this.log('Sent online-queue:set-ttl');
-        }
-      }, currentTtlInterval);
-    };
+    const currentTtlInterval = { value: this.getAdjustedPollInterval(0, this.CONFIG.TTL_INTERVAL) };
+    let isFirstConnection = true;
 
     socket.on('connect', () => {
       this.log('Socket.IO connected');
-      startTtlEmission();
+      if (isFirstConnection) {
+        socket.emit('online-queue:join', { ...socketConfig.query });
+        this.log('Sent online-queue:join');
+        isFirstConnection = false;
+      }
+      this.startTtlEmission(currentTtlInterval.value);
     });
 
-    socket.on('online-queue:set-ttl', (data: StatusResponse) => {
-      if (!data?.data) {
-        this.log('Invalid status response received', 'warn');
-        return;
-      }
+    socket.on('online-queue:join', (data: StatusResponse) => {
+      this.handleStatusUpdate(data, popupConfig, currentTtlInterval);
+    });
 
-      const { status, position, uuid } = data.data;
-      this.state.queueStatus = { status, position, uuid };
-
-      if (this.state.storageKey && typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem(this.state.storageKey, uuid);
-      }
-
-      this.statusListeners.forEach((listener) => listener({ status, position, uuid }));
-
-      // Update TTL interval based on new position
-      const newTtlInterval = this.getAdjustedPollInterval(position, this.CONFIG.TTL_INTERVAL);
-      if (newTtlInterval !== currentTtlInterval) {
-        currentTtlInterval = newTtlInterval;
-        startTtlEmission();
-      }
-
-      // Handle popup and navigation
-      if (status === OnlineQueueStatus.ACTIVE) {
-        this.removePopup();
-        this.toggleNavigation(false);
-      } else {
-        const content =
-          typeof popupConfig?.content === 'function'
-            ? popupConfig.content(position)
-            : popupConfig?.content ?? this.getDefaultPopupContent(position, popupConfig?.language ?? 'ko', popupConfig);
-        this.createPopup(content, popupConfig?.style);
-        this.toggleNavigation(true);
-      }
+    socket.on('online-queue:status', (data: StatusResponse) => {
+      this.handleStatusUpdate(data, popupConfig, currentTtlInterval);
     });
 
     if (customEvents) {
