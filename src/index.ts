@@ -24,6 +24,7 @@ type QueryParams = Record<string, string | number | undefined>;
 class ConnectionJQueueSdkWeb {
   private static readonly CONFIG = {
     STATUS_POLL_INTERVAL: 10000,
+    TTL_INTERVAL: 5000, // Interval for emitting online-queue:set-ttl (5 seconds)
     API_ENDPOINTS: {
       JOIN: '/api/v1/online-queue/join',
       STATUS: '/api/v1/online-queue/status',
@@ -96,6 +97,7 @@ class ConnectionJQueueSdkWeb {
   };
 
   private static statusInterval: NodeJS.Timeout | null = null;
+  private static ttlInterval: NodeJS.Timeout | null = null; // Interval for set-ttl emission
   private static statusListeners: ((status: { position: number; status: OnlineQueueStatus; uuid: string }) => void)[] = [];
 
   private static log(message: string, type: 'info' | 'warn' | 'error' = 'info', error?: unknown): void {
@@ -186,10 +188,27 @@ class ConnectionJQueueSdkWeb {
     });
     this.state.socket = socket;
 
-    socket.on('connect', () => this.log('Socket connected'));
-    socket.on('online-queue:set-ttl', handleStatusUpdate);
+    socket.on('connect', () => {
+      this.log('Socket connected');
+      // Start emitting online-queue:set-ttl every 5 seconds
+      this.ttlInterval = setInterval(() => {
+        if (socket.connected) {
+          socket.emit('online-queue:set-ttl', { ...socketConfig?.query, uuid });
+          this.log('Emitted online-queue:set-ttl');
+        }
+      }, this.CONFIG.TTL_INTERVAL);
+    });
+
+    socket.on('online-queue:status', handleStatusUpdate);
     socket.on('connect_error', (error) => this.log('Socket connection failed', 'error', error));
-    socket.on('disconnect', (reason) => this.log(`Socket disconnected: ${reason}`, 'warn'));
+    socket.on('disconnect', (reason) => {
+      this.log(`Socket disconnected: ${reason}`, 'warn');
+      // Clear ttlInterval on disconnect
+      if (this.ttlInterval) {
+        clearInterval(this.ttlInterval);
+        this.ttlInterval = null;
+      }
+    });
 
     Object.entries(customEvents || {}).forEach(([eventName, handler]) => {
       socket.on(eventName, (data: unknown) => {
@@ -327,6 +346,10 @@ class ConnectionJQueueSdkWeb {
     if (this.statusInterval) {
       clearInterval(this.statusInterval);
       this.statusInterval = null;
+    }
+    if (this.ttlInterval) {
+      clearInterval(this.ttlInterval);
+      this.ttlInterval = null;
     }
     this.removePopup();
     this.toggleNavigation(false);
