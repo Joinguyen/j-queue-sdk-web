@@ -1,8 +1,7 @@
-import { io, Socket } from 'socket.io-client';
 import { InitConfig, PopupConfig, OnlineQueueStatus, CustomEventUtils } from './types';
 
 interface ConnectionState {
-  socket: Socket | null;
+  socket: WebSocket | null;
   popupEl: HTMLElement | null;
   isNavigating: boolean;
   storageKey: string | null;
@@ -83,6 +82,8 @@ class ConnectionJQueueSdkWeb {
         }
       `,
     },
+    RECONNECTION_ATTEMPTS: 3,
+    RECONNECTION_DELAY: 1000,
   };
 
   private static state: ConnectionState = {
@@ -98,6 +99,8 @@ class ConnectionJQueueSdkWeb {
 
   private static ttlInterval: NodeJS.Timeout | null = null;
   private static statusListeners: Array<(status: NonNullable<ConnectionState['queueStatus']>) => void> = [];
+  private static reconnectAttempts = 0;
+  private static isFirstConnection = true;
 
   /** Logs messages with a prefix, supporting different log levels. */
   private static log(message: string, type: 'info' | 'warn' | 'error' = 'info', error?: unknown): void {
@@ -165,7 +168,7 @@ class ConnectionJQueueSdkWeb {
     return `
       <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
         <div style="padding: 20px; text-align: center;">
-          <p style="font-size: 16px; line-height: 1.5; margin: 0 0 20px 0; color: ${textColor};">
+          <p style="font-size: 18px; line-height: 1.5; margin: 0 0 20px 0; color: ${textColor};">
             ${messages.MESS_1}<br>${messages.MESS_2}
           </p>
           <div style="position: relative; width: 150px; height: 150px; margin: 20px auto;">
@@ -226,74 +229,111 @@ class ConnectionJQueueSdkWeb {
   private static startTtlEmission(interval: number): void {
     if (this.ttlInterval) clearInterval(this.ttlInterval);
     this.ttlInterval = setInterval(() => {
-      if (this.state.socket?.connected && this.state.queueStatus?.uuid && this.state.socketConfig) {
-        this.state.socket.emit('online-queue:status', { ...this.state.socketConfig.query, uuid: this.state.queueStatus.uuid });
-        this.log('Sent online-queue:status');
+      if (this.state.socket?.readyState === WebSocket.OPEN && this.state.queueStatus?.uuid && this.state.socketConfig) {
+        try {
+          this.state.socket.send(JSON.stringify({
+            event: 'online-queue:status',
+            data: { ...this.state.socketConfig.query, uuid: this.state.queueStatus.uuid },
+          }));
+          this.log('Sent online-queue:status');
+        } catch (error) {
+          this.log('Failed to send online-queue:status', 'error', error);
+        }
       }
     }, interval);
   }
 
-  /** Configures the Socket.IO connection with event handlers and periodic TTL emission. */
-  private static setupSocket(
+  /** Attempts to reconnect to the WebSocket server. */
+  private static reconnect(wsUrl: string, socketConfig: NonNullable<InitConfig['socketConfig']>, uuid: string, customEvents: InitConfig['customEvents'], popupConfig: InitConfig['popupConfig']): void {
+    if (this.reconnectAttempts >= this.CONFIG.RECONNECTION_ATTEMPTS) {
+      this.log('Max reconnection attempts reached', 'error');
+      return;
+    }
+
+    this.reconnectAttempts++;
+    this.log(`Reconnection attempt ${this.reconnectAttempts} in ${this.CONFIG.RECONNECTION_DELAY}ms`, 'info');
+
+    setTimeout(() => {
+      this.setupWebSocket(wsUrl, socketConfig, uuid, customEvents, popupConfig);
+    }, this.CONFIG.RECONNECTION_DELAY);
+  }
+
+  /** Configures the WebSocket connection with event handlers and periodic TTL emission. */
+  private static setupWebSocket(
     wsUrl: string,
     socketConfig: NonNullable<InitConfig['socketConfig']>,
     uuid: string,
     customEvents: InitConfig['customEvents'],
     popupConfig: InitConfig['popupConfig'],
   ): void {
-    const socket = io(wsUrl, {
-      query: { ...socketConfig.query, uuid },
-      transports: socketConfig.transports || ['websocket'],
-      reconnectionAttempts: socketConfig.reconnectionAttempts || 3,
-      reconnectionDelay: socketConfig.reconnectionDelay || 1000,
-    });
-    this.state.socket = socket;
+    // Append query parameters to wsUrl
+    const query = new URLSearchParams({ ...socketConfig.query, uuid }).toString();
+    const ws = new WebSocket(`${wsUrl}?${query}`);
+    this.state.socket = ws;
 
     const currentTtlInterval = { value: this.getAdjustedPollInterval(0, this.CONFIG.TTL_INTERVAL) };
-    let isFirstConnection = true;
 
-    socket.on('connect', () => {
-      this.log('Socket.IO connected');
-      if (isFirstConnection) {
-        socket.emit('online-queue:join', { ...socketConfig.query });
-        this.log('Sent online-queue:join');
-        isFirstConnection = false;
+    ws.onopen = () => {
+      this.log('WebSocket connected');
+      this.reconnectAttempts = 0; // Reset reconnection attempts
+
+      if (this.isFirstConnection) {
+        try {
+          ws.send(JSON.stringify({
+            event: 'online-queue:join',
+            data: { ...socketConfig.query },
+          }));
+          this.log('Sent online-queue:join');
+          this.isFirstConnection = false;
+        } catch (error) {
+          this.log('Failed to send online-queue:join', 'error', error);
+        }
       }
+
       this.startTtlEmission(currentTtlInterval.value);
-    });
+    };
 
-    socket.on('online-queue:join', (data: StatusResponse) => {
-      this.handleStatusUpdate(data, popupConfig, currentTtlInterval);
-    });
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data as string);
+        if (!message.event || !message.data) {
+          this.log('Invalid WebSocket message format', 'warn');
+          return;
+        }
 
-    socket.on('online-queue:status', (data: StatusResponse) => {
-      this.handleStatusUpdate(data, popupConfig, currentTtlInterval);
-    });
+        switch (message.event) {
+          case 'online-queue:status':
+            this.handleStatusUpdate({ data: message.data }, popupConfig, currentTtlInterval);
+            break;
+          default:
+            if (customEvents && customEvents[message.event]) {
+              customEvents[message.event](message.data, {
+                createPopup: this.createPopup.bind(this),
+                removePopup: this.removePopup.bind(this),
+                preventNavigation: () => this.toggleNavigation(true),
+                allowNavigation: () => this.toggleNavigation(false),
+              });
+            } else {
+              this.log(`Unhandled WebSocket event: ${message.event}`, 'warn');
+            }
+        }
+      } catch (error) {
+        this.log('Failed to parse WebSocket message', 'error', error);
+      }
+    };
 
-    if (customEvents) {
-      Object.keys(customEvents).forEach((event) => {
-        socket.on(event, (data: any) => {
-          customEvents[event](data, {
-            createPopup: this.createPopup.bind(this),
-            removePopup: this.removePopup.bind(this),
-            preventNavigation: () => this.toggleNavigation(true),
-            allowNavigation: () => this.toggleNavigation(false),
-          });
-        });
-      });
-    }
+    ws.onerror = (error) => {
+      this.log('WebSocket error', 'error', error);
+    };
 
-    socket.on('connect_error', (error) => {
-      this.log('Socket.IO connection error', 'error', error);
-    });
-
-    socket.on('disconnect', (reason) => {
-      this.log(`Socket.IO disconnected: ${reason}`, 'warn');
+    ws.onclose = (event) => {
+      this.log(`WebSocket closed: code=${event.code}, reason=${event.reason}`, 'warn');
       if (this.ttlInterval) {
         clearInterval(this.ttlInterval);
         this.ttlInterval = null;
       }
-    });
+      this.reconnect(wsUrl, socketConfig, uuid, customEvents, popupConfig);
+    };
   }
 
   /** Adds a listener for queue status updates. */
@@ -321,7 +361,7 @@ class ConnectionJQueueSdkWeb {
     option = { storageKey: this.CONFIG.STORAGE_KEY },
   }: InitConfig): Promise<{ disconnect: () => void }> {
     if (!wsUrl || !apiUrl) throw new Error('Both wsUrl and apiUrl are required for initialization');
-    if (typeof window === 'undefined') throw new Error('Socket.IO is not supported in this environment.');
+    if (typeof window === 'undefined') throw new Error('WebSocket is not supported in this environment.');
 
     this.state = {
       ...this.state,
@@ -333,8 +373,7 @@ class ConnectionJQueueSdkWeb {
     this.injectStyles(popupConfig);
 
     try {
-      // Connect socket immediately
-      this.setupSocket(wsUrl, socketConfig, '', customEvents, popupConfig);
+      this.setupWebSocket(wsUrl, socketConfig, '', customEvents, popupConfig);
       return { disconnect: () => this.disconnect() };
     } catch (error) {
       this.log('Initialization failed', 'error', error);
@@ -364,14 +403,19 @@ class ConnectionJQueueSdkWeb {
       socketConfig: null,
     };
     this.statusListeners = [];
+    this.reconnectAttempts = 0;
+    this.isFirstConnection = true;
   }
 
-  /** Disconnects the Socket.IO connection and cleans up resources. */
+  /** Disconnects the WebSocket connection and cleans up resources. */
   private static disconnect(): void {
-    if (this.state.socket?.connected && this.state.queueStatus?.uuid && this.state.apiUrl) {
+    if (this.state.socket?.readyState === WebSocket.OPEN && this.state.queueStatus?.uuid && this.state.apiUrl) {
       this.sendLeaveRequest();
     }
-    this.state.socket?.disconnect();
+    if (this.state.socket) {
+      this.state.socket.close();
+      this.state.socket = null;
+    }
     this.cleanup();
   }
 }
@@ -384,7 +428,7 @@ declare global {
 
 if (typeof window !== 'undefined') {
   window.ConnectionJQueueSdkWeb = ConnectionJQueueSdkWeb;
-  // console.log('Initialized on window');
+  console.log('Initialized on window');
 }
 
 export default ConnectionJQueueSdkWeb;
