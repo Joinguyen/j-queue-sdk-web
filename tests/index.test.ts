@@ -1,210 +1,382 @@
-// tests/index.test.ts
-import ConnectionJQueueSdkWeb, { InitConfig } from '../src/index';
+import { OnlineQueueStatus, InitConfig } from '../src/types';
+import ConnectionJQueueSdkWeb from '../src/index';
+import { io, Socket } from 'socket.io-client';
 
-import { io } from 'socket.io-client';
-import { OnlineQueueStatus } from '../src/types';
-
+// Mock socket.io-client
 jest.mock('socket.io-client', () => {
-    const mSocket = {
+    const mockSocket = {
         on: jest.fn(),
         emit: jest.fn(),
         disconnect: jest.fn(),
         connected: false,
     };
     return {
-        io: jest.fn(() => mSocket),
+        io: jest.fn(() => mockSocket),
     };
 });
 
+// Mock fetch
+global.fetch = jest.fn();
+
+// Mock navigator.sendBeacon
+const mockSendBeacon = jest.fn();
+Object.defineProperty(global.navigator, 'sendBeacon', {
+    value: mockSendBeacon,
+    writable: true,
+});
+
+// Mock console methods
+jest.spyOn(console, 'log').mockImplementation(() => { });
+jest.spyOn(console, 'warn').mockImplementation(() => { });
+jest.spyOn(console, 'error').mockImplementation(() => { });
+
 describe('ConnectionJQueueSdkWeb', () => {
-    let socketMock: any;
+    let mockSocket: any;
 
     beforeEach(() => {
         jest.clearAllMocks();
-        socketMock = (io as jest.Mock).mock.results[0]?.value;
+        mockSocket = {
+            on: jest.fn(),
+            emit: jest.fn(),
+            disconnect: jest.fn(),
+            connected: true,
+        };
+        (io as jest.Mock).mockReturnValue(mockSocket);
+        // Reset DOM
         document.head.innerHTML = '';
         document.body.innerHTML = '';
+        // Mock sessionStorage
+        const sessionStorageMock = (() => {
+            let store: Record<string, string> = {};
+            return {
+                getItem: (key: string) => store[key] || null,
+                setItem: (key: string, value: string) => (store[key] = value),
+                removeItem: (key: string) => delete store[key],
+                clear: () => (store = {}),
+            };
+        })();
+        Object.defineProperty(window, 'sessionStorage', { value: sessionStorageMock });
+        // Reset timers and navigation
+        jest.useRealTimers();
         window.onbeforeunload = null;
     });
 
     afterEach(() => {
-        // Ensure cleanup of any intervals or DOM changes
         jest.useRealTimers();
         document.head.innerHTML = '';
         document.body.innerHTML = '';
         window.onbeforeunload = null;
     });
 
-    test('should initialize socket connection with default config', () => {
-        const config: InitConfig = {
-            url: 'wss://queue-server.example.com',
-        };
-
-        const conn = ConnectionJQueueSdkWeb.init(config);
-
-        expect(io).toHaveBeenCalledWith('wss://queue-server.example.com', {
-            transports: ['websocket'],
-            reconnectionAttempts: 3,
-            reconnectionDelay: 1000,
+    describe('init', () => {
+        it('throws error if URL is not provided', async () => {
+            await expect(ConnectionJQueueSdkWeb.init({} as any)).rejects.toThrow('URL is required for initialization');
         });
 
-        expect(socketMock.on).toHaveBeenCalledWith('connect', expect.any(Function));
-        expect(socketMock.on).toHaveBeenCalledWith('online-queue:status', expect.any(Function));
-        expect(socketMock.on).toHaveBeenCalledWith('connect_error', expect.any(Function));
-        expect(socketMock.on).toHaveBeenCalledWith('disconnect', expect.any(Function));
+        it('throws error if socket.io-client is not loaded', async () => {
+            // jest.spyOn(global, 'io').mockImplementation(undefined as any);
+            await expect(ConnectionJQueueSdkWeb.init({ url: 'http://example.com' })).rejects.toThrow(
+                'Socket.IO client is not loaded. Please include socket.io-client before j-queue-sdk-web.'
+            );
+        });
 
-        // Test disconnect method
-        conn.disconnect();
-        expect(socketMock.disconnect).toHaveBeenCalled();
-        expect(document.body.innerHTML).toBe('');
-        expect(window.onbeforeunload).toBeNull();
+        it('initializes with ACTIVE status and sets up socket', async () => {
+            const mockResponse = {
+                data: { uuid: 'test-uuid', position: 1, status: OnlineQueueStatus.ACTIVE },
+            };
+            (fetch as jest.Mock).mockResolvedValueOnce({
+                json: jest.fn().mockResolvedValue(mockResponse),
+            });
+
+            const config: InitConfig = {
+                url: 'http://example.com',
+                socketConfig: { query: { token: '123' } },
+                popupConfig: { language: 'en' },
+            };
+
+            const result = await ConnectionJQueueSdkWeb.init(config);
+
+            expect(fetch).toHaveBeenCalledWith('http://example.com/online-queue/join', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config?.socketConfig?.query),
+            });
+            expect(io).toHaveBeenCalledWith('http://example.com', {
+                ...config?.socketConfig,
+                query: { ...config?.socketConfig?.query, uuid: 'test-uuid' },
+            });
+            expect(mockSocket.on).toHaveBeenCalledWith('connect', expect.any(Function));
+            expect(mockSocket.on).toHaveBeenCalledWith('online-queue:status', expect.any(Function));
+            expect(mockSocket.on).toHaveBeenCalledWith('connect_error', expect.any(Function));
+            expect(mockSocket.on).toHaveBeenCalledWith('disconnect', expect.any(Function));
+            expect(ConnectionJQueueSdkWeb.getQueueStatus()).toEqual(mockResponse.data);
+            expect(document.querySelector('#__jqueue_popup')).toBeNull();
+            expect(window.onbeforeunload).toBeNull();
+            expect(result).toEqual({ disconnect: expect.any(Function) });
+        });
+
+        it('initializes with WAITING status, creates popup, and starts polling', async () => {
+            jest.useFakeTimers();
+            const mockResponse = {
+                data: { uuid: 'test-uuid', position: 5, status: OnlineQueueStatus.WAITING },
+            };
+            (fetch as jest.Mock).mockResolvedValueOnce({
+                json: jest.fn().mockResolvedValue(mockResponse),
+            });
+
+            const config: InitConfig = {
+                url: 'http://example.com',
+                socketConfig: { query: { token: '123' } },
+                popupConfig: { language: 'en' },
+            };
+
+            await ConnectionJQueueSdkWeb.init(config);
+
+            expect(fetch).toHaveBeenCalledWith('http://example.com/online-queue/join', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config?.socketConfig?.query),
+            });
+            expect(io).not.toHaveBeenCalled();
+            const popup = document.querySelector('#__jqueue_popup');
+            expect(popup).toBeTruthy();
+            expect(popup?.textContent).toContain('Queue Number');
+            expect(popup?.textContent).toContain('5');
+            expect(window.onbeforeunload).toBeInstanceOf(Function);
+            expect(window.sessionStorage.getItem('queue_token')).toBe('test-uuid');
+
+            // Simulate polling
+            (fetch as jest.Mock).mockResolvedValueOnce({
+                json: jest.fn().mockResolvedValue({
+                    data: { uuid: 'test-uuid', position: 4, status: OnlineQueueStatus.WAITING },
+                }),
+            });
+
+            jest.advanceTimersByTime(10000);
+            await Promise.resolve();
+
+            expect(fetch).toHaveBeenCalledWith('http://example.com/online-queue/status?token=123&uuid=test-uuid', {
+                method: 'GET',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            expect(ConnectionJQueueSdkWeb.getQueueStatus()).toMatchObject({
+                position: 4,
+                status: OnlineQueueStatus.WAITING,
+                uuid: 'test-uuid',
+            });
+
+            // Simulate status change to ACTIVE
+            (fetch as jest.Mock).mockResolvedValueOnce({
+                json: jest.fn().mockResolvedValue({
+                    data: { uuid: 'test-uuid', position: 1, status: OnlineQueueStatus.ACTIVE },
+                }),
+            });
+
+            jest.advanceTimersByTime(10000);
+            await Promise.resolve();
+
+            expect(io).toHaveBeenCalledWith('http://example.com', {
+                ...config?.socketConfig,
+                query: { ...config?.socketConfig?.query, uuid: 'test-uuid' },
+            });
+            expect(document.querySelector('#__jqueue_popup')).toBeNull();
+            expect(window.onbeforeunload).toBeNull();
+        });
+
+        it('handles invalid join response gracefully', async () => {
+            (fetch as jest.Mock).mockResolvedValueOnce({
+                json: jest.fn().mockResolvedValue({ data: {} }),
+            });
+
+            const config: InitConfig = { url: 'http://example.com' };
+            const result = await ConnectionJQueueSdkWeb.init(config);
+
+            expect(console.error).toHaveBeenCalledWith('[J-Queue] Join response missing UUID', expect.anything());
+            expect(result).toEqual({ disconnect: expect.any(Function) });
+            expect(ConnectionJQueueSdkWeb.getQueueStatus()).toBeNull();
+        });
     });
 
-    test('should create popup and prevent navigation on WAITING status', () => {
-        const config: InitConfig = {
-            url: 'wss://queue-server.example.com',
-            popupConfig: {
-                language: 'en',
-            },
-        };
+    describe('status listeners', () => {
+        it('adds and removes status listeners', async () => {
+            const listener1 = jest.fn();
+            const listener2 = jest.fn();
 
-        ConnectionJQueueSdkWeb.init(config);
+            ConnectionJQueueSdkWeb.addStatusListener(listener1);
+            ConnectionJQueueSdkWeb.addStatusListener(listener2);
 
-        // Simulate connect event to start polling
-        const connectHandler = socketMock.on.mock.calls.find((call: any) => call[0] === 'connect')?.[1];
-        connectHandler();
+            const mockResponse = {
+                data: { uuid: 'test-uuid', position: 1, status: OnlineQueueStatus.ACTIVE },
+            };
+            (fetch as jest.Mock).mockResolvedValueOnce({
+                json: jest.fn().mockResolvedValue(mockResponse),
+            });
 
-        // Simulate status event with WAITING status
-        const statusHandler = socketMock.on.mock.calls.find((call: any) => call[0] === 'online-queue:status')?.[1];
-        statusHandler({ data: { uuid: 'test-uuid', position: 5, status: OnlineQueueStatus.WAITING } });
+            await ConnectionJQueueSdkWeb.init({ url: 'http://example.com' });
 
-        expect(document.body.innerHTML).toContain('__jqueue_popup');
-        expect(document.body.innerHTML).toContain('Position: 5');
-        expect(window.onbeforeunload).not.toBeNull();
-        expect(socketMock.emit).toHaveBeenCalledWith('online-queue:status', {});
+            expect(listener1).toHaveBeenCalledWith(mockResponse.data);
+            expect(listener2).toHaveBeenCalledWith(mockResponse.data);
+
+            ConnectionJQueueSdkWeb.removeStatusListener(listener1);
+            const newStatus = { uuid: 'test-uuid', position: 2, status: OnlineQueueStatus.ACTIVE };
+            ConnectionJQueueSdkWeb['updateQueueStatus'](newStatus, {});
+
+            expect(listener1).not.toHaveBeenCalledWith(newStatus);
+            expect(listener2).toHaveBeenCalledWith(newStatus);
+        });
     });
 
-    test('should remove popup and allow navigation on ACTIVE status', () => {
-        const config: InitConfig = {
-            url: 'wss://queue-server.example.com',
-            popupConfig: {
-                language: 'en',
-            },
-        };
+    describe('popup management', () => {
+        it('creates and removes popup based on status', async () => {
+            const mockResponse = {
+                data: { uuid: 'test-uuid', position: 5, status: OnlineQueueStatus.WAITING },
+            };
+            (fetch as jest.Mock).mockResolvedValueOnce({
+                json: jest.fn().mockResolvedValue(mockResponse),
+            });
 
-        ConnectionJQueueSdkWeb.init(config);
+            await ConnectionJQueueSdkWeb.init({
+                url: 'http://example.com',
+                popupConfig: { language: 'en' },
+            });
 
-        // Simulate connect event to start polling
-        const connectHandler = socketMock.on.mock.calls.find((call: any) => call[0] === 'connect')?.[1];
-        connectHandler();
+            const popup = document.querySelector('#__jqueue_popup');
+            expect(popup).toBeTruthy();
+            expect(popup?.textContent).toContain('Queue Number');
+            expect(popup?.textContent).toContain('5');
 
-        // Simulate WAITING status first
-        const statusHandler = socketMock.on.mock.calls.find((call: any) => call[0] === 'online-queue:status')?.[1];
-        statusHandler({ data: { uuid: 'test-uuid', position: 5, status: OnlineQueueStatus.WAITING } });
+            // Simulate status update to ACTIVE
+            ConnectionJQueueSdkWeb['updateQueueStatus'](
+                { uuid: 'test-uuid', position: 1, status: OnlineQueueStatus.ACTIVE },
+                {}
+            );
 
-        // Simulate ACTIVE status
-        statusHandler({ data: { uuid: 'test-uuid', position: 1, status: OnlineQueueStatus.ACTIVE } });
-
-        expect(document.body.innerHTML).toBe('');
-        expect(window.onbeforeunload).toBeNull();
-        expect(socketMock.emit).not.toHaveBeenCalledWith('online-queue:status', {}); // Polling should stop
+            expect(document.querySelector('#__jqueue_popup')).toBeNull();
+        });
     });
 
-    test('should handle custom event and trigger provided handler', () => {
-        const customHandler = jest.fn();
-        const config: InitConfig = {
-            url: 'wss://queue-server.example.com',
-            customEvents: {
-                'custom-event': customHandler,
-            },
-        };
+    describe('socket setup', () => {
+        it('sets up socket events for ACTIVE status', async () => {
+            const mockResponse = {
+                data: { uuid: 'test-uuid', position: 1, status: OnlineQueueStatus.ACTIVE },
+            };
+            (fetch as jest.Mock).mockResolvedValueOnce({
+                json: jest.fn().mockResolvedValue(mockResponse),
+            });
 
-        ConnectionJQueueSdkWeb.init(config);
+            const customEvents = { 'custom-event': jest.fn() };
+            await ConnectionJQueueSdkWeb.init({
+                url: 'http://example.com',
+                socketConfig: { query: { token: '123' } },
+                customEvents,
+            });
 
-        // Simulate custom event
-        const registeredHandler = socketMock.on.mock.calls.find((call: any) => call[0] === 'custom-event')?.[1];
-        registeredHandler({ message: 'Hello' });
+            expect(mockSocket.on).toHaveBeenCalledWith('connect', expect.any(Function));
+            expect(mockSocket.on).toHaveBeenCalledWith('online-queue:status', expect.any(Function));
+            expect(mockSocket.on).toHaveBeenCalledWith('connect_error', expect.any(Function));
+            expect(mockSocket.on).toHaveBeenCalledWith('disconnect', expect.any(Function));
+            expect(mockSocket.on).toHaveBeenCalledWith('custom-event', expect.any(Function));
 
-        expect(customHandler).toHaveBeenCalledWith(
-            { message: 'Hello' },
-            expect.objectContaining({
-                createPopup: expect.any(Function),
-                removePopup: expect.any(Function),
-                preventNavigation: expect.any(Function),
-                allowNavigation: expect.any(Function),
-            })
-        );
-
-        // Test utility functions in custom event
-        const utils = customHandler.mock.calls[0][1];
-        utils.createPopup('<div>Test</div>');
-        expect(document.body.innerHTML).toContain('__jqueue_popup');
-        expect(document.body.innerHTML).toContain('Test');
-
-        utils.preventNavigation();
-        expect(window.onbeforeunload).not.toBeNull();
-
-        utils.removePopup();
-        expect(document.body.innerHTML).toBe('');
-
-        utils.allowNavigation();
-        expect(window.onbeforeunload).toBeNull();
+            // Test custom event
+            const customHandler = mockSocket.on.mock.calls.find((call: any) => call[0] === 'custom-event')?.[1];
+            customHandler({ message: 'Hello' });
+            expect(customEvents['custom-event']).toHaveBeenCalledWith(
+                { message: 'Hello' },
+                expect.objectContaining({
+                    createPopup: expect.any(Function),
+                    removePopup: expect.any(Function),
+                    preventNavigation: expect.any(Function),
+                    allowNavigation: expect.any(Function),
+                })
+            );
+        });
     });
 
-    test('should handle invalid status response gracefully', () => {
-        const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
-        const config: InitConfig = {
-            url: 'wss://queue-server.example.com',
-        };
+    describe('disconnect', () => {
+        it('sends leave request and cleans up', async () => {
+            const mockResponse = {
+                data: { uuid: 'test-uuid', position: 1, status: OnlineQueueStatus.ACTIVE },
+            };
+            (fetch as jest.Mock).mockResolvedValueOnce({
+                json: jest.fn().mockResolvedValue(mockResponse),
+            });
 
-        ConnectionJQueueSdkWeb.init(config);
+            const config: InitConfig = {
+                url: 'http://example.com',
+                socketConfig: { query: { token: '123' } },
+            };
+            const { disconnect } = await ConnectionJQueueSdkWeb.init(config);
 
-        // Simulate connect event
-        const connectHandler = socketMock.on.mock.calls.find((call: any) => call[0] === 'connect')?.[1];
-        connectHandler();
+            disconnect();
 
-        // Simulate invalid status response
-        const statusHandler = socketMock.on.mock.calls.find((call: any) => call[0] === 'online-queue:status')?.[1];
-        statusHandler({ data: null });
-
-        expect(consoleWarnSpy).toHaveBeenCalledWith('[J-Queue] Invalid status response received, uuid: unknown');
-        expect(document.body.innerHTML).toBe('');
-        expect(window.onbeforeunload).toBeNull();
-
-        consoleWarnSpy.mockRestore();
+            expect(mockSendBeacon).toHaveBeenCalledWith(
+                'http://example.com/online-queue/leave',
+                JSON.stringify({ token: '123', uuid: 'test-uuid' })
+            );
+            expect(mockSocket.disconnect).toHaveBeenCalled();
+            expect(ConnectionJQueueSdkWeb.getQueueStatus()).toBeNull();
+            expect(window.onbeforeunload).toBeNull();
+            expect(window.sessionStorage.getItem('queue_token')).toBeNull();
+        });
     });
 
-    test('should inject styles only once', () => {
-        const config: InitConfig = {
-            url: 'wss://queue-server.example.com',
-        };
+    describe('navigation blocking', () => {
+        it('blocks navigation and sends leave request on beforeunload', async () => {
+            const mockResponse = {
+                data: { uuid: 'test-uuid', position: 5, status: OnlineQueueStatus.WAITING },
+            };
+            (fetch as jest.Mock).mockResolvedValueOnce({
+                json: jest.fn().mockResolvedValue(mockResponse),
+            });
 
-        ConnectionJQueueSdkWeb.init(config);
-        ConnectionJQueueSdkWeb.init(config); // Second init should not add styles again
+            await ConnectionJQueueSdkWeb.init({
+                url: 'http://example.com',
+                socketConfig: { query: { token: '123' } },
+            });
 
-        expect(document.querySelectorAll('style[data-jqueue-styles]').length).toBe(1);
-        expect(document.head.innerHTML).toContain('.loader-jqueue_popup');
+            const event = new Event('beforeunload');
+            window.dispatchEvent(event);
+
+            expect(mockSendBeacon).toHaveBeenCalledWith(
+                'http://example.com/online-queue/leave',
+                JSON.stringify({ token: '123', uuid: 'test-uuid' })
+            );
+        });
     });
 
-    test('should handle disconnect event and clean up', () => {
-        const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation();
-        const config: InitConfig = {
-            url: 'wss://queue-server.example.com',
-        };
+    describe('styles injection', () => {
+        it('injects styles only once', async () => {
+            const mockResponse = {
+                data: { uuid: 'test-uuid', position: 5, status: OnlineQueueStatus.WAITING },
+            };
+            (fetch as jest.Mock).mockResolvedValueOnce({
+                json: jest.fn().mockResolvedValue(mockResponse),
+            });
 
-        ConnectionJQueueSdkWeb.init(config);
+            await ConnectionJQueueSdkWeb.init({ url: 'http://example.com' });
+            await ConnectionJQueueSdkWeb.init({ url: 'http://example.com' });
 
-        // Simulate connect event to start polling
-        const connectHandler = socketMock.on.mock.calls.find((call: any) => call[0] === 'connect')?.[1];
-        connectHandler();
+            expect(document.querySelectorAll('style[data-jqueue-styles]').length).toBe(1);
+            expect(document.head.innerHTML).toContain('.loader-jqueue_popup');
+        });
+    });
 
-        // Simulate disconnect event
-        const disconnectHandler = socketMock.on.mock.calls.find((call: any) => call[0] === 'disconnect')?.[1];
-        disconnectHandler('server');
+    describe('invalid status response', () => {
+        it('handles invalid status response gracefully', async () => {
+            const mockResponse = {
+                data: { uuid: 'test-uuid', position: 5, status: OnlineQueueStatus.WAITING },
+            };
+            (fetch as jest.Mock).mockResolvedValueOnce({
+                json: jest.fn().mockResolvedValue(mockResponse),
+            });
 
-        expect(consoleWarnSpy).toHaveBeenCalledWith('[J-Queue] Disconnected from server: server');
-        expect(socketMock.emit).not.toHaveBeenCalledWith('online-queue:status', {}); // Polling should stop
+            await ConnectionJQueueSdkWeb.init({ url: 'http://example.com' });
 
-        consoleWarnSpy.mockRestore();
+            // Simulate invalid status response
+            ConnectionJQueueSdkWeb['updateQueueStatus'](null as any, {});
+
+            expect(console.warn).toHaveBeenCalledWith('[J-Queue] Invalid status response received');
+            expect(ConnectionJQueueSdkWeb.getQueueStatus()).toBeNull();
+        });
     });
 });
