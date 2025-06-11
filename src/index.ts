@@ -24,7 +24,7 @@ type QueryParams = Record<string, string | number | undefined>;
 
 class ConnectionJQueueSdkWeb {
   private static readonly CONFIG = {
-    TTL_INTERVAL: 30000, // Base interval for online-queue:status
+    TTL_INTERVAL: 2000, // Base interval for online-queue:status
     STORAGE_KEY: 'queue_token',
     API_ENDPOINTS: {
       LEAVE: '/leave',
@@ -230,8 +230,8 @@ class ConnectionJQueueSdkWeb {
   private static startTtlEmission(interval: number): void {
     if (this.ttlInterval) clearInterval(this.ttlInterval);
     this.ttlInterval = setInterval(() => {
-      if (this.state.socket?.connected && this.state.queueStatus?.uuid && this.state.socketConfig) {
-        this.state.socket.emit('online-queue:status', { ...this.state.socketConfig.query, uuid: this.state.queueStatus.uuid });
+      if (this.state.socket?.connected && this.state.socketConfig) {
+        this.state.socket.emit('online-queue:status', { ...this.state.socketConfig.query, ...(this.state.queueStatus?.uuid ? { uuid: `${this.state.queueStatus?.uuid || ''}` } : {}) });
         this.log('Sent online-queue:status');
       }
     }, interval);
@@ -254,24 +254,14 @@ class ConnectionJQueueSdkWeb {
     this.state.socket = socket;
 
     const currentTtlInterval = { value: this.getAdjustedPollInterval(0, this.CONFIG.TTL_INTERVAL) };
-    let isFirstConnection = true;
 
     socket.on('connect', () => {
       this.log('Socket.IO connected');
-      if (isFirstConnection) {
-        socket.emit('online-queue:join', { ...socketConfig.query });
-        this.log('Sent online-queue:join');
-        isFirstConnection = false;
-      }
       this.startTtlEmission(currentTtlInterval.value);
     });
 
-    socket.on('online-queue:join', (data: StatusResponse) => {
-      this.handleStatusUpdate(data, popupConfig, currentTtlInterval);
-    });
-
     socket.on('online-queue:status', (data: StatusResponse) => {
-      this.handleStatusUpdate(data, popupConfig, currentTtlInterval);
+      this.handleStatusUpdate({ 'data': data } as any, popupConfig, currentTtlInterval);
     });
 
     if (customEvents) {
