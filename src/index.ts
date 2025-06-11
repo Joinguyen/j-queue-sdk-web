@@ -24,12 +24,9 @@ type QueryParams = Record<string, string | number | undefined>;
 
 class ConnectionJQueueSdkWeb {
   private static readonly CONFIG = {
-    STATUS_POLL_INTERVAL: 1000,
-    TTL_INTERVAL: 5000, // Interval for emitting online-queue:set-ttl
+    TTL_INTERVAL: 5000, // Base interval for online-queue:set-ttl
     STORAGE_KEY: 'queue_token',
     API_ENDPOINTS: {
-      JOIN: '/join',
-      STATUS: '/status',
       LEAVE: '/leave',
     },
     MESSAGES: {
@@ -99,7 +96,6 @@ class ConnectionJQueueSdkWeb {
     socketConfig: null,
   };
 
-  private static statusInterval: NodeJS.Timeout | null = null;
   private static ttlInterval: NodeJS.Timeout | null = null;
   private static statusListeners: Array<(status: NonNullable<ConnectionState['queueStatus']>) => void> = [];
 
@@ -173,7 +169,7 @@ class ConnectionJQueueSdkWeb {
             ${messages.MESS_1}<br>${messages.MESS_2}
           </p>
           <div style="position: relative; width: 150px; height: 150px; margin: 20px auto;">
-            <span style="position: absolute; inset: 0;" class="loader-jqueue-static"></span>
+            <span style="position: absolute; inset: 0;" class="loader-jqueue_popup"></span>
             <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
               <div style="font-size: 14px; color: ${textColor};">${messages.MESS_3}</div>
               <div style="font-size: 36px; color: ${textColor}; font-weight: bold;">${position}</div>
@@ -184,13 +180,18 @@ class ConnectionJQueueSdkWeb {
     `;
   }
 
+  /** Calculates the polling interval based on queue position. */
+  private static getAdjustedPollInterval(position: number, baseInterval: number): number {
+    return position >= 100 ? baseInterval + (position / 100) * 1000 : baseInterval;
+  }
+
   /** Configures the Socket.IO connection with event handlers and periodic TTL emission. */
   private static setupSocket(
     wsUrl: string,
     socketConfig: NonNullable<InitConfig['socketConfig']>,
     uuid: string,
     customEvents: InitConfig['customEvents'],
-    handleStatusUpdate: (response: StatusResponse) => void,
+    popupConfig: InitConfig['popupConfig'],
   ): void {
     const socket = io(wsUrl, {
       query: { ...socketConfig.query, uuid },
@@ -200,18 +201,57 @@ class ConnectionJQueueSdkWeb {
     });
     this.state.socket = socket;
 
-    socket.on('connect', () => {
-      this.log('Socket.IO connected');
+    let currentTtlInterval = this.getAdjustedPollInterval(0, this.CONFIG.TTL_INTERVAL);
+
+    const startTtlEmission = () => {
+      if (this.ttlInterval) clearInterval(this.ttlInterval);
       this.ttlInterval = setInterval(() => {
-        if (socket.connected) {
-          socket.emit('online-queue:set-ttl', { ...socketConfig.query, uuid });
+        if (socket.connected && this.state.queueStatus?.uuid) {
+          socket.emit('online-queue:set-ttl', { ...socketConfig.query, uuid: this.state.queueStatus.uuid });
           this.log('Sent online-queue:set-ttl');
         }
-      }, this.CONFIG.TTL_INTERVAL);
+      }, currentTtlInterval);
+    };
+
+    socket.on('connect', () => {
+      this.log('Socket.IO connected');
+      startTtlEmission();
     });
 
-    socket.on('online-queue:status', (data: StatusResponse) => {
-      handleStatusUpdate(data);
+    socket.on('online-queue:set-ttl', (data: StatusResponse) => {
+      if (!data?.data) {
+        this.log('Invalid status response received', 'warn');
+        return;
+      }
+
+      const { status, position, uuid } = data.data;
+      this.state.queueStatus = { status, position, uuid };
+
+      if (this.state.storageKey && typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(this.state.storageKey, uuid);
+      }
+
+      this.statusListeners.forEach((listener) => listener({ status, position, uuid }));
+
+      // Update TTL interval based on new position
+      const newTtlInterval = this.getAdjustedPollInterval(position, this.CONFIG.TTL_INTERVAL);
+      if (newTtlInterval !== currentTtlInterval) {
+        currentTtlInterval = newTtlInterval;
+        startTtlEmission();
+      }
+
+      // Handle popup and navigation
+      if (status === OnlineQueueStatus.ACTIVE) {
+        this.removePopup();
+        this.toggleNavigation(false);
+      } else {
+        const content =
+          typeof popupConfig?.content === 'function'
+            ? popupConfig.content(position)
+            : popupConfig?.content ?? this.getDefaultPopupContent(position, popupConfig?.language ?? 'ko', popupConfig);
+        this.createPopup(content, popupConfig?.style);
+        this.toggleNavigation(true);
+      }
     });
 
     if (customEvents) {
@@ -255,90 +295,6 @@ class ConnectionJQueueSdkWeb {
     return this.state.queueStatus;
   }
 
-  /** Fetches the queue status from the server. */
-  private static async fetchStatus(apiUrl: string, query: QueryParams, uuid: string): Promise<StatusResponse> {
-    const params = new URLSearchParams({});
-    params.append('uuid', uuid);
-    const response = await fetch(`${apiUrl}${this.CONFIG.API_ENDPOINTS.STATUS}?${params.toString()}`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    return response.json();
-  }
-
-  /** Calculates the polling interval based on queue position. */
-  private static getAdjustedPollInterval(position: number, baseInterval: number): number {
-    return position >= 100 ? baseInterval + (position / 100) * 1000 : baseInterval;
-  }
-
-  /** Updates the queue status and UI based on the server response. */
-  private static updateQueueStatus(data: StatusResponse['data'] | null, popupConfig: InitConfig['popupConfig']): void {
-    if (!data) {
-      this.log('Invalid status response received', 'warn');
-      return;
-    }
-
-    const { status, position, uuid } = data;
-    this.state.queueStatus = { status, position, uuid };
-
-    if (this.state.storageKey && typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem(this.state.storageKey, uuid);
-    }
-
-    this.statusListeners.forEach((listener) => listener({ status, position, uuid }));
-
-    if (status === OnlineQueueStatus.ACTIVE) {
-      this.removePopup();
-      this.toggleNavigation(false);
-      if (this.statusInterval) {
-        clearInterval(this.statusInterval);
-        this.statusInterval = null;
-      }
-    } else {
-      const content =
-        typeof popupConfig?.content === 'function'
-          ? popupConfig.content(position)
-          : popupConfig?.content ?? this.getDefaultPopupContent(position, popupConfig?.language ?? 'ko', popupConfig);
-      this.createPopup(content, popupConfig?.style);
-      this.toggleNavigation(true);
-    }
-  }
-
-  /** Starts polling the queue status for WAITING state. */
-  private static startStatusPolling(
-    wsUrl: string,
-    apiUrl: string,
-    socketConfig: NonNullable<InitConfig['socketConfig']>,
-    uuid: string,
-    basePollInterval: number,
-    popupConfig: InitConfig['popupConfig'],
-    customEvents: InitConfig['customEvents'],
-  ): void {
-    let currentPollInterval = this.getAdjustedPollInterval(this.state.queueStatus?.position ?? 0, basePollInterval);
-
-    const pollStatus = async () => {
-      try {
-        const response = await this.fetchStatus(apiUrl, socketConfig.query ?? {}, uuid);
-        this.updateQueueStatus(response.data, popupConfig);
-
-        const newPollInterval = this.getAdjustedPollInterval(response.data.position, basePollInterval);
-        if (newPollInterval !== currentPollInterval && this.statusInterval) {
-          clearInterval(this.statusInterval);
-          currentPollInterval = newPollInterval;
-          this.statusInterval = setInterval(pollStatus, currentPollInterval);
-        }
-
-        if (response.data.status === OnlineQueueStatus.ACTIVE) {
-          this.setupSocket(wsUrl, socketConfig, uuid, customEvents, (res) => this.updateQueueStatus(res.data, popupConfig));
-        }
-      } catch (error) {
-        this.log('Status polling failed', 'error', error);
-      }
-    };
-
-    this.statusInterval = setInterval(pollStatus, currentPollInterval);
-  }
-
   /** Initializes the queue SDK with the provided configuration. */
   public static async init({
     wsUrl,
@@ -346,7 +302,6 @@ class ConnectionJQueueSdkWeb {
     socketConfig = {},
     popupConfig = {},
     customEvents = {},
-    pollInterval = this.CONFIG.STATUS_POLL_INTERVAL,
     option = { storageKey: this.CONFIG.STORAGE_KEY },
   }: InitConfig): Promise<{ disconnect: () => void }> {
     if (!wsUrl || !apiUrl) throw new Error('Both wsUrl and apiUrl are required for initialization');
@@ -362,26 +317,8 @@ class ConnectionJQueueSdkWeb {
     this.injectStyles(popupConfig);
 
     try {
-      const joinResponse = await fetch(`${apiUrl}${this.CONFIG.API_ENDPOINTS.JOIN}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(socketConfig.query ?? {}),
-      });
-      const joinData: StatusResponse = await joinResponse.json();
-
-      if (!joinData.data?.uuid) {
-        this.log('Join response missing UUID', 'error');
-        return { disconnect: () => this.disconnect() };
-      }
-
-      this.updateQueueStatus(joinData.data, popupConfig);
-
-      if (joinData.data.status === OnlineQueueStatus.ACTIVE) {
-        this.setupSocket(wsUrl, socketConfig, joinData.data.uuid, customEvents, (res) => this.updateQueueStatus(res.data, popupConfig));
-      } else if (joinData.data.status === OnlineQueueStatus.WAITING) {
-        this.startStatusPolling(wsUrl, apiUrl, socketConfig, joinData.data.uuid, pollInterval, popupConfig, customEvents);
-      }
-
+      // Connect socket immediately
+      this.setupSocket(wsUrl, socketConfig, '', customEvents, popupConfig);
       return { disconnect: () => this.disconnect() };
     } catch (error) {
       this.log('Initialization failed', 'error', error);
@@ -393,10 +330,6 @@ class ConnectionJQueueSdkWeb {
   private static cleanup(): void {
     if (this.state.storageKey && typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem(this.state.storageKey);
-    }
-    if (this.statusInterval) {
-      clearInterval(this.statusInterval);
-      this.statusInterval = null;
     }
     if (this.ttlInterval) {
       clearInterval(this.ttlInterval);
