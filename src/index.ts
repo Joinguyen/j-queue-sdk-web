@@ -24,7 +24,7 @@ type QueryParams = Record<string, string | number | undefined>;
 
 class ConnectionJQueueSdkWeb {
   private static readonly CONFIG = {
-    TTL_INTERVAL: 5000, // Base interval for online-queue:status
+    TTL_INTERVAL: 30000, // Base interval for online-queue:status
     STORAGE_KEY: 'queue_token',
     API_ENDPOINTS: {
       LEAVE: '/leave',
