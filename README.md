@@ -36,7 +36,7 @@ Initialize the SDK after including the scripts:
       option: { storageKey: 'queue_token' },
       socketConfig: {
         query: {
-          app_id: 'XXXXX', // Replace with actual App id
+          app_id: 'XXXXX', // Replace with actual App ID
           service_name: 'NEWS', // Replace with actual Service name
         },
         transports: ['websocket'],
@@ -54,7 +54,6 @@ Initialize the SDK after including the scripts:
           console.log('Queue status:', data);
         },
       },
-      pollInterval: 1000, // Poll interval in milliseconds
     });
 
     // Clean up on page unload
@@ -68,8 +67,8 @@ Initialize the SDK after including the scripts:
 ```
 
 ### Notes
-- **Default Export**: The script exports `ConnectionJQueueSdkWeb` as `ConnectionJQueueSdkWeb.default`. The code handles both cases.
-- **Error Handling**: Use `onerror` on the script tag and try-catch to handle errors.
+- **Default Export**: The script exports `ConnectionJQueueSdkWeb` as `ConnectionJQueueSdkWeb.default`. The code handles both cases for compatibility.
+- **Error Handling**: Use `onerror` on the script tag and try-catch to handle initialization errors.
 - **Leave Request**: The SDK automatically sends a `navigator.sendBeacon` request to the `/leave` endpoint with a JSON payload (`{"uuid": "..."}`) on disconnect or navigation.
 
 ## Configuration Options
@@ -91,20 +90,20 @@ Initialize the SDK after including the scripts:
   - `loaderGradientStart` (string): Starting color of the loader gradient (e.g., `'#276bff'`). Defines the initial color of the loading animation.
   - `loaderGradientEnd` (string): Ending color of the loader gradient (e.g., `'rgba(39,107,255,0.05)'`). Defines the final color of the loading animation.
 - `customEvents` (object, optional): Key-value pairs where the key is the event name and the value is a handler function. The handler receives event `data` and utilities `{ createPopup, removePopup, preventNavigation, allowNavigation }`.
-- `pollInterval` (number, optional): Interval for polling queue status in milliseconds (default: `1000`). The interval adjusts dynamically based on queue position (adds `(position / 100) * 1000`ms for positions >= 100).
 
 ## Features
 
 - Connects to a Socket.IO server to monitor queue status.
-- Makes HTTP API calls to `/join`, `/status`, and `/leave` endpoints.
-- Receives `{ data: { uuid: string, position: number, status: string } }` from the Socket.IO server via the `online-queue:status` event.
-- If `status === 'ACTIVE'`, removes the popup and allows navigation.
-- If `status === 'WAITING'`, displays a customizable full-screen popup with the queue `position` and prevents navigation.
+- Receives `{ data: { uuid: string, position: number, status: OnlineQueueStatus } }` from the Socket.IO server via the `online-queue:status` event.
+- Handles queue status updates:
+  - `ACTIVE`: Removes the popup, allows navigation, and emits `online-queue:check-disconnected` every 30 seconds to maintain connection status.
+  - `WAITING`: Displays a customizable full-screen popup with the queue `position`, prevents navigation, and emits `online-queue:status` at an interval of 2000ms (adjusted by `(position / 100) * 1000`ms for positions >= 100).
+  - `EMPTY`: Logs an error to the console and clears any active intervals, taking no further UI or navigation actions.
 - Supports custom Socket.IO events via `customEvents`.
 - Provides utilities (`createPopup`, `removePopup`, `preventNavigation`, `allowNavigation`) for custom event handlers.
-- Handles connection errors and disconnections gracefully with reconnection logic.
+- Handles connection errors and disconnections with reconnection logic (default: 3 attempts, 1000ms delay).
 - Includes default popup styling with a loading animation and multilingual support (English and Korean).
-- Sends periodic `online-queue:set-ttl` messages to maintain queue position.
+- Sends periodic `online-queue:status` messages for `WAITING` state to maintain queue position.
 - Uses `navigator.sendBeacon` to notify the server with a JSON payload when leaving the queue.
 
 ## Development
@@ -127,7 +126,7 @@ Run tests using Jest in a jsdom environment:
 npm test
 ```
 
-Tests are located in the `tests` directory and cover initialization, event handling, polling, and disconnection logic, with mocked Socket.IO connections.
+Tests are located in the `tests` directory and cover initialization, status handling, socket events, disconnection, and listener management, with mocked Socket.IO connections.
 
 ## Security Note
 
@@ -139,5 +138,5 @@ MIT
 
 ## Repository
 
-- **GitHub**: [https://github.com/Joinguyen/j-queue-sdk-web](https://github.com/Joinguyen/j-queue-sdk-web)
-- **Issues**: [https://github.com/Joinguyen/j-queue-sdk-web/issues](https://github.com/Joinguyen/j-queue-sdk-web/issues)
+- **GitHub**: [https://github.com/joinguyen/j-queue-sdk-web](https://github.com/joinguyen/j-queue-sdk-web)
+- **Issues**: [https://github.com/joinguyen/j-queue-sdk-web/issues](https://github.com/joinguyen/j-queue-sdk-web/issues)

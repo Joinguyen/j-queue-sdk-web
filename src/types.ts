@@ -10,6 +10,7 @@ export interface PopupConfig {
 export enum OnlineQueueStatus {
     WAITING = 1,
     ACTIVE = 2,
+    EMPTY = 3
 }
 
 export interface CustomEventUtils {
