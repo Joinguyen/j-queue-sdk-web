@@ -5,7 +5,7 @@ export interface PopupConfig {
     loaderGradientStart?: string;
     loaderGradientEnd?: string;
     style?: string;
-    isLoadBalance?: boolean
+    isShowLoadingOnConnect?: boolean
 }
 
 export enum OnlineQueueStatus {

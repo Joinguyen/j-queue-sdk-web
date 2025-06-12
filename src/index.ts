@@ -33,13 +33,13 @@ class ConnectionJQueueSdkWeb {
         MESS_1: 'Progressing sequentially based on access order.',
         MESS_2: 'We are doing our best to proceed quickly.',
         MESS_3: 'Queue Number',
-        LOADING: 'Connecting to the queue...',
+        LOADING: 'Connecting',
       },
       ko: {
         MESS_1: '접속한 순서대로 순차적 진행 중입니다.',
         MESS_2: '빠른 서비스 진행을 위해 최선을 다하고 있습니다.',
         MESS_3: '대기순번',
-        LOADING: '대기열에 연결 중...',
+        LOADING: '연결 중',
       },
     },
     STYLES: {
@@ -183,6 +183,9 @@ class ConnectionJQueueSdkWeb {
         <div style="padding: 20px; text-align: center;">
           <div style="position: relative; width: 150px; height: 150px; margin: 20px auto;">
             <span style="position: absolute; inset: 0;" class="loader-jqueue_popup"></span>
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+              <div style="font-size: 14px; color: ${textColor};">${messages.LOADING}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -336,7 +339,7 @@ class ConnectionJQueueSdkWeb {
     apiUrl = '',
     socketConfig = {},
     popupConfig = {
-      isLoadBalance: true
+      isShowLoadingOnConnect: false
     },
     customEvents = {},
     option = { storageTokenKey: this.CONFIG.STORAGE_TOKEN_KEY, storageConnectKey: this.CONFIG.STORAGE_CONNECT_KEY },
@@ -355,8 +358,8 @@ class ConnectionJQueueSdkWeb {
     this.injectStyles(popupConfig);
 
     try {
-      // Show loading popup if isLoadBalance is true
-      if (popupConfig?.isLoadBalance) {
+      // Show loading popup if isShowLoadingOnConnect is true
+      if (popupConfig?.isShowLoadingOnConnect) {
         const content = this.getLoadingPopupContent(popupConfig.language ?? 'ko', popupConfig);
         this.createPopup(content, popupConfig.style);
       }
