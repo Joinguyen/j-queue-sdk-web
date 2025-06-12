@@ -244,7 +244,7 @@ class ConnectionJQueueSdkWeb {
         this.toggleNavigation(true);
         break;
       case OnlineQueueStatus.EMPTY:
-        this.log('Queue status is EMPTY', 'error');
+        this.log('[j-queue-sdk-web] - Connect key does not exist!', 'error');
         this.clearInterval();
         break;
     }
