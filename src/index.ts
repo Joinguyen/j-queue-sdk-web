@@ -1,11 +1,12 @@
 import { io, Socket } from 'socket.io-client';
-import { InitConfig, PopupConfig, OnlineQueueStatus, CustomEventUtils } from './types';
+import { InitConfig, OnlineQueueStatus, PopupConfig } from './types';
 
 interface ConnectionState {
   socket: Socket | null;
   popupEl: HTMLElement | null;
   isNavigating: boolean;
-  storageKey: string | null;
+  storageTokenKey: string | null;
+  storageConnectKey: string | null;
   queueStatus: { position: number; status: OnlineQueueStatus; uuid: string } | null;
   wsUrl: string | null;
   apiUrl: string | null;
@@ -13,11 +14,9 @@ interface ConnectionState {
 }
 
 interface StatusResponse {
-  data: {
-    uuid: string;
-    position: number;
-    status: OnlineQueueStatus;
-  };
+  uuid: string;
+  position: number;
+  status: OnlineQueueStatus;
 }
 
 type QueryParams = Record<string, string | number | undefined>;
@@ -26,7 +25,8 @@ class ConnectionJQueueSdkWeb {
   private static readonly CONFIG = {
     TTL_INTERVAL: 2000,
     CHECK_DISCONNECTED_INTERVAL: 30000,
-    STORAGE_KEY: 'queue_token',
+    STORAGE_TOKEN_KEY: 'queue_token',
+    STORAGE_CONNECT_KEY: 'connect_key',
     API_ENDPOINTS: { LEAVE: '/leave' },
     MESSAGES: {
       en: {
@@ -88,7 +88,8 @@ class ConnectionJQueueSdkWeb {
     socket: null,
     popupEl: null,
     isNavigating: false,
-    storageKey: null,
+    storageTokenKey: null,
+    storageConnectKey: null,
     queueStatus: null,
     wsUrl: null,
     apiUrl: null,
@@ -206,22 +207,22 @@ class ConnectionJQueueSdkWeb {
     }, this.CONFIG.CHECK_DISCONNECTED_INTERVAL);
   }
 
-  private static updateQueueStatus({ status, position, uuid }: StatusResponse['data']): void {
+  private static updateQueueStatus({ status, position, uuid }: StatusResponse): void {
     this.state.queueStatus = { status, position, uuid };
-    if (this.state.storageKey && typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem(this.state.storageKey, uuid);
+    if (this.state.storageTokenKey && typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(this.state.storageTokenKey, uuid);
     }
     this.statusListeners.forEach((listener) => listener({ status, position, uuid }));
   }
 
   private static handleStatusUpdate(data: StatusResponse, popupConfig: InitConfig['popupConfig'], currentTtlInterval: { value: number }): void {
-    if (!data?.data) {
+    if (!data) {
       this.log('Invalid status response received', 'warn');
       return;
     }
 
-    const { status, position } = data.data;
-    this.updateQueueStatus(data.data);
+    const { status, position } = data;
+    this.updateQueueStatus(data);
 
     switch (status) {
       case OnlineQueueStatus.ACTIVE:
@@ -291,6 +292,10 @@ class ConnectionJQueueSdkWeb {
       this.log(`Socket.IO disconnected: ${reason}`, 'warn');
       this.clearInterval();
     });
+
+    if (this.state.storageConnectKey && typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(this.state.storageConnectKey, `${socketConfig?.query?.connect_key}`);
+    }
   }
 
   public static addStatusListener(listener: (status: NonNullable<ConnectionState['queueStatus']>) => void): void {
@@ -311,12 +316,17 @@ class ConnectionJQueueSdkWeb {
     socketConfig = {},
     popupConfig = {},
     customEvents = {},
-    option = { storageKey: this.CONFIG.STORAGE_KEY },
+    option = { storageTokenKey: this.CONFIG.STORAGE_TOKEN_KEY, storageConnectKey: this.CONFIG.STORAGE_CONNECT_KEY },
   }: InitConfig): Promise<{ disconnect: () => void }> {
     if (!wsUrl) throw new Error('Both wsUrl are required');
     if (typeof window === 'undefined') throw new Error('Socket.IO is not supported in this environment');
 
-    this.state = { ...this.state, storageKey: option.storageKey ?? this.CONFIG.STORAGE_KEY, wsUrl, apiUrl, socketConfig };
+    this.state = {
+      ...this.state,
+      storageTokenKey: option.storageTokenKey ?? this.CONFIG.STORAGE_TOKEN_KEY,
+      storageConnectKey: option.storageConnectKey ?? this.CONFIG.STORAGE_CONNECT_KEY,
+      wsUrl, apiUrl, socketConfig
+    };
     this.injectStyles(popupConfig);
 
     try {
@@ -329,13 +339,16 @@ class ConnectionJQueueSdkWeb {
   }
 
   private static cleanup(): void {
-    if (this.state.storageKey && typeof sessionStorage !== 'undefined') {
-      sessionStorage.removeItem(this.state.storageKey);
+    if (this.state.storageTokenKey && typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(this.state.storageTokenKey);
+    }
+    if (this.state.storageConnectKey && typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(this.state.storageConnectKey);
     }
     this.clearInterval();
     this.removePopup();
     this.toggleNavigation(false);
-    this.state = { socket: null, popupEl: null, isNavigating: false, storageKey: null, queueStatus: null, wsUrl: null, apiUrl: null, socketConfig: null };
+    this.state = { socket: null, popupEl: null, isNavigating: false, storageTokenKey: null, storageConnectKey: null, queueStatus: null, wsUrl: null, apiUrl: null, socketConfig: null };
     this.statusListeners = [];
   }
 
@@ -358,4 +371,4 @@ if (typeof window !== 'undefined') {
 }
 
 export default ConnectionJQueueSdkWeb;
-export type { InitConfig, PopupConfig, OnlineQueueStatus } from './types';
+export type { InitConfig, OnlineQueueStatus, PopupConfig } from './types';

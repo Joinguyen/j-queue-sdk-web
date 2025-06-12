@@ -32,12 +32,16 @@ Initialize the SDK after including the scripts:
     const JQueueSdk = window.ConnectionJQueueSdkWeb.default || window.ConnectionJQueueSdkWeb;
     const connection = JQueueSdk.init({
       wsUrl: 'wss://queue-server.example.com', // Socket.IO server URL
-      apiUrl: 'https://api.example.com', // API server URL
-      option: { storageKey: 'queue_token' },
+      apiUrl: 'https://api.example.com', // API server URL (optional)
+      option: {
+        storageTokenKey: 'queue_token',
+        storageConnectKey: 'connect_key'
+      },
       socketConfig: {
         query: {
           app_id: 'XXXXX', // Replace with actual App ID
           service_name: 'NEWS', // Replace with actual Service name
+          connect_key: 'CONNECT_KEY' // Replace with actual connect key
         },
         transports: ['websocket'],
         reconnectionAttempts: 3,
@@ -69,16 +73,18 @@ Initialize the SDK after including the scripts:
 ### Notes
 - **Default Export**: The script exports `ConnectionJQueueSdkWeb` as `ConnectionJQueueSdkWeb.default`. The code handles both cases for compatibility.
 - **Error Handling**: Use `onerror` on the script tag and try-catch to handle initialization errors.
-- **Leave Request**: The SDK automatically sends a `navigator.sendBeacon` request to the `/leave` endpoint with a JSON payload (`{"uuid": "..."}`) on disconnect or navigation.
+- **Leave Request**: If `apiUrl` is provided, the SDK sends a `navigator.sendBeacon` request to the `/leave` endpoint with a JSON payload (`{"uuid": "..."}`) on disconnect or navigation.
+- **Session Storage**: The SDK stores the queue UUID in `sessionStorage` using `storageTokenKey` and the `connect_key` (from `socketConfig.query`) using `storageConnectKey` to ensure continuity across page reloads.
 
 ## Configuration Options
 
 - `wsUrl` (string, required): Socket.IO server URL (e.g., `wss://queue-server.example.com`).
-- `apiUrl` (string, required): API server URL for HTTP requests (e.g., `https://api.example.com`).
+- `apiUrl` (string, optional): API server URL for HTTP requests (e.g., `https://api.example.com`). Required for sending `/leave` requests.
 - `option` (object, optional): Additional configuration options for the SDK.
-  - `storageKey` (string): The key used to store the UUID in `sessionStorage` for persisting queue session data (e.g., `'queue_token'`). This allows the SDK to retrieve the UUID across page reloads, ensuring continuity in queue tracking.
+  - `storageTokenKey` (string): Key used to store the queue UUID in `sessionStorage` (default: `'queue_token'`).
+  - `storageConnectKey` (string): Key used to store the `connect_key` from `socketConfig.query` in `sessionStorage` (default: `'connect_key'`).
 - `socketConfig` (object, optional): Socket.IO configuration options.
-  - `query` (object): Additional query parameters sent to the Socket.IO server (e.g., `{ app_id: 'XXXXX', service_name: 'NEWS' }`).
+  - `query` (object): Additional query parameters sent to the Socket.IO server (e.g., `{ app_id: 'XXXXX', service_name: 'NEWS', connect_key: 'CONNECT_KEY' }`).
   - `transports` (string[]): Transport methods (e.g., `['websocket']`). Defaults to `['websocket']`.
   - `reconnectionAttempts` (number): Number of reconnection attempts (e.g., `3`). Defaults to `3`.
   - `reconnectionDelay` (number): Delay between reconnection attempts in milliseconds (e.g., `1000`). Defaults to `1000`.
@@ -86,15 +92,15 @@ Initialize the SDK after including the scripts:
   - `language` ('en' | 'ko'): Language for default popup content (default: `'ko'`).
   - `style` (string): Custom CSS for the popup.
   - `content` (string | (position: number) => string): Custom HTML content for the popup, either as a static string or a function that takes `position` and returns HTML.
-  - `textColor` (string): Color for the popup text (e.g., `'#276bff'`). Overrides the default text color.
-  - `loaderGradientStart` (string): Starting color of the loader gradient (e.g., `'#276bff'`). Defines the initial color of the loading animation.
-  - `loaderGradientEnd` (string): Ending color of the loader gradient (e.g., `'rgba(39,107,255,0.05)'`). Defines the final color of the loading animation.
+  - `textColor` (string): Color for the popup text (e.g., `'#276bff'`).
+  - `loaderGradientStart` (string): Starting color of the loader gradient (e.g., `'#276bff'`).
+  - `loaderGradientEnd` (string): Ending color of the loader gradient (e.g., `'rgba(39,107,255,0.05)'`).
 - `customEvents` (object, optional): Key-value pairs where the key is the event name and the value is a handler function. The handler receives event `data` and utilities `{ createPopup, removePopup, preventNavigation, allowNavigation }`.
 
 ## Features
 
 - Connects to a Socket.IO server to monitor queue status.
-- Receives `{ data: { uuid: string, position: number, status: OnlineQueueStatus } }` from the Socket.IO server via the `online-queue:status` event.
+- Receives `{ uuid: string, position: number, status: OnlineQueueStatus }` from the Socket.IO server via the `online-queue:status` event.
 - Handles queue status updates:
   - `ACTIVE`: Removes the popup, allows navigation, and emits `online-queue:check-disconnected` every 30 seconds to maintain connection status.
   - `WAITING`: Displays a customizable full-screen popup with the queue `position`, prevents navigation, and emits `online-queue:status` at an interval of 2000ms (adjusted by `(position / 100) * 1000`ms for positions >= 100).
@@ -104,7 +110,8 @@ Initialize the SDK after including the scripts:
 - Handles connection errors and disconnections with reconnection logic (default: 3 attempts, 1000ms delay).
 - Includes default popup styling with a loading animation and multilingual support (English and Korean).
 - Sends periodic `online-queue:status` messages for `WAITING` state to maintain queue position.
-- Uses `navigator.sendBeacon` to notify the server with a JSON payload when leaving the queue.
+- Stores `connect_key` in `sessionStorage` for continuity.
+- Uses `navigator.sendBeacon` to notify the server with a JSON payload when leaving the queue (if `apiUrl` is provided).
 
 ## Development
 

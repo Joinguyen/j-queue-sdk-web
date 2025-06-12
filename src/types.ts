@@ -13,28 +13,30 @@ export enum OnlineQueueStatus {
     EMPTY = 3
 }
 
-export interface CustomEventUtils {
-    createPopup: (html: string, style?: string) => void;
-    removePopup: () => void;
-    preventNavigation: () => void;
-    allowNavigation: () => void;
+export interface StatusResponse {
+    uuid: string;
+    position: number;
+    status: OnlineQueueStatus;
 }
-
-export type QueryParams = Record<string, string | number | undefined>;
 
 export interface InitConfig {
     wsUrl: string;
     apiUrl: string;
     socketConfig?: {
-        query?: QueryParams;
+        query?: Record<string, string | number | undefined>;
         transports?: string[];
         reconnectionAttempts?: number;
         reconnectionDelay?: number;
     };
     popupConfig?: PopupConfig;
-    customEvents?: Record<string, (data: any, utils: CustomEventUtils) => void>;
-    pollInterval?: number;
+    customEvents?: Record<string, (data: any, utils: {
+        createPopup: (html: string, style?: string) => void;
+        removePopup: () => void;
+        preventNavigation: () => void;
+        allowNavigation: () => void;
+    }) => void>;
     option?: {
-        storageKey?: string;
+        storageTokenKey?: string;
+        storageConnectKey?: string;
     };
 }
