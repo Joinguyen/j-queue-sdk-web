@@ -33,11 +33,13 @@ class ConnectionJQueueSdkWeb {
         MESS_1: 'Progressing sequentially based on access order.',
         MESS_2: 'We are doing our best to proceed quickly.',
         MESS_3: 'Queue Number',
+        LOADING: 'Connecting to the queue...',
       },
       ko: {
         MESS_1: '접속한 순서대로 순차적 진행 중입니다.',
         MESS_2: '빠른 서비스 진행을 위해 최선을 다하고 있습니다.',
         MESS_3: '대기순번',
+        LOADING: '대기열에 연결 중...',
       },
     },
     STYLES: {
@@ -173,6 +175,20 @@ class ConnectionJQueueSdkWeb {
     `;
   }
 
+  private static getLoadingPopupContent(language: 'en' | 'ko' = 'ko', popupConfig?: PopupConfig): string {
+    const messages = this.CONFIG.MESSAGES[language];
+    const textColor = popupConfig?.textColor ?? '#276bff';
+    return `
+      <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+        <div style="padding: 20px; text-align: center;">
+          <div style="position: relative; width: 150px; height: 150px; margin: 20px auto;">
+            <span style="position: absolute; inset: 0;" class="loader-jqueue_popup"></span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   private static getAdjustedPollInterval(position: number): number {
     return position >= 100 ? this.CONFIG.TTL_INTERVAL + (position / 100) * 1000 : this.CONFIG.TTL_INTERVAL;
   }
@@ -244,7 +260,7 @@ class ConnectionJQueueSdkWeb {
         this.toggleNavigation(true);
         break;
       case OnlineQueueStatus.EMPTY:
-        alert('[J-Queue] - Connect key does not exist!');
+        alert('[J Queue] - Connect key does not exist!');
         this.clearInterval();
         break;
     }
@@ -269,6 +285,7 @@ class ConnectionJQueueSdkWeb {
 
     socket.on('connect', () => {
       this.log('Socket.IO connected');
+      this.removePopup(); // Remove loading popup if present
       this.startStatusEmission(currentTtlInterval.value);
     });
 
@@ -287,7 +304,11 @@ class ConnectionJQueueSdkWeb {
       );
     });
 
-    socket.on('connect_error', (error) => this.log('Socket.IO connection error', 'error', error));
+    socket.on('connect_error', (error) => {
+      this.log('Socket.IO connection error', 'error', error);
+      this.removePopup(); // Remove loading popup on connection error
+    });
+
     socket.on('disconnect', (reason) => {
       this.log(`Socket.IO disconnected: ${reason}`, 'warn');
       this.clearInterval();
@@ -314,7 +335,9 @@ class ConnectionJQueueSdkWeb {
     wsUrl,
     apiUrl = '',
     socketConfig = {},
-    popupConfig = {},
+    popupConfig = {
+      isLoadBalance: true
+    },
     customEvents = {},
     option = { storageTokenKey: this.CONFIG.STORAGE_TOKEN_KEY, storageConnectKey: this.CONFIG.STORAGE_CONNECT_KEY },
   }: InitConfig): Promise<{ disconnect: () => void }> {
@@ -325,15 +348,24 @@ class ConnectionJQueueSdkWeb {
       ...this.state,
       storageTokenKey: option.storageTokenKey ?? this.CONFIG.STORAGE_TOKEN_KEY,
       storageConnectKey: option.storageConnectKey ?? this.CONFIG.STORAGE_CONNECT_KEY,
-      wsUrl, apiUrl, socketConfig
+      wsUrl,
+      apiUrl,
+      socketConfig,
     };
     this.injectStyles(popupConfig);
 
     try {
+      // Show loading popup if isLoadBalance is true
+      if (popupConfig?.isLoadBalance) {
+        const content = this.getLoadingPopupContent(popupConfig.language ?? 'ko', popupConfig);
+        this.createPopup(content, popupConfig.style);
+      }
+
       this.setupSocket(wsUrl, socketConfig, '', customEvents, popupConfig);
       return { disconnect: () => this.disconnect() };
     } catch (error) {
       this.log('Initialization failed', 'error', error);
+      this.removePopup(); // Remove loading popup on init failure
       return { disconnect: () => this.disconnect() };
     }
   }
@@ -348,7 +380,17 @@ class ConnectionJQueueSdkWeb {
     this.clearInterval();
     this.removePopup();
     this.toggleNavigation(false);
-    this.state = { socket: null, popupEl: null, isNavigating: false, storageTokenKey: null, storageConnectKey: null, queueStatus: null, wsUrl: null, apiUrl: null, socketConfig: null };
+    this.state = {
+      socket: null,
+      popupEl: null,
+      isNavigating: false,
+      storageTokenKey: null,
+      storageConnectKey: null,
+      queueStatus: null,
+      wsUrl: null,
+      apiUrl: null,
+      socketConfig: null,
+    };
     this.statusListeners = [];
   }
 
@@ -360,6 +402,7 @@ class ConnectionJQueueSdkWeb {
     this.cleanup();
   }
 }
+
 declare global {
   interface Window {
     ConnectionJQueueSdkWeb: typeof ConnectionJQueueSdkWeb;
