@@ -81,7 +81,7 @@ Initialize the SDK after including the script:
   - `storageTokenKey` (string): Key used to store the queue UUID in `sessionStorage` (default: `'queue_token'`).
   - `storageConnectKey` (string): Key used to store the `connect_key` from `socketConfig.query` in `sessionStorage` (default: `'connect_key'`).
 - `socketConfig` (object, optional):
-  - `query` (object): Additional query parameters sent to the Socket.IO server (e.g., `{ app_id: 'XXXXX', service_name: 'NEWS', connect_key: 'CONNECT_KEY' }`).
+  - `query` (object): Additional query parameters sent to the Socket.IO server (e.g., `{ connect_key: 'CONNECT_KEY' }`).
   - `transports` (string[]): Transport methods (e.g., `['websocket']`). Defaults to `['websocket']`.
   - `reconnectionAttempts` (number): Number of reconnection attempts (default: `3`).
   - `reconnectionDelay` (number): Delay between reconnection attempts in milliseconds (default: `1000`).
