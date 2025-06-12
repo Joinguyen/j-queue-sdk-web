@@ -21,7 +21,7 @@ export interface StatusResponse {
 
 export interface InitConfig {
     wsUrl: string;
-    apiUrl: string;
+    apiUrl?: string;
     socketConfig?: {
         query?: Record<string, string | number | undefined>;
         transports?: string[];

@@ -1,6 +1,6 @@
-import { OnlineQueueStatus, InitConfig } from '../src/types';
-import ConnectionJQueueSdkWeb from '../src/index';
 import { io, Socket } from 'socket.io-client';
+import ConnectionJQueueSdkWeb from '../src/index';
+import { InitConfig, OnlineQueueStatus } from '../src/types';
 
 // Mock socket.io-client
 jest.mock('socket.io-client', () => {
@@ -118,7 +118,7 @@ describe('ConnectionJQueueSdkWeb', () => {
                 option: { storageTokenKey: 'queue_token', storageConnectKey: 'connect_key' }
             };
             await ConnectionJQueueSdkWeb.init(config);
-            statusHandler = (mockSocket?.on as any).mock.calls.find(([event]: any) => event === 'online-queue:status')![1];
+            statusHandler = (mockSocket.on as any)?.mock?.calls.find(([event]: any) => event === 'online-queue:status')![1];
         });
 
         it('should log warning for invalid status response', () => {
@@ -159,7 +159,7 @@ describe('ConnectionJQueueSdkWeb', () => {
             expect(sessionStorage.setItem).toHaveBeenCalledWith('queue_token', '123');
             expect(window.document.body.appendChild).not.toHaveBeenCalled();
             expect(window.onbeforeunload).toBeNull();
-            expect(consoleErrorSpy).toHaveBeenCalledWith('[J-Queue] Queue status is EMPTY', '');
+            expect(consoleErrorSpy).toHaveBeenCalledWith('[j-queue-sdk-web] - Connect key does not exist!', '');
             expect(mockSocket.emit).not.toHaveBeenCalled();
         });
     });
@@ -178,9 +178,9 @@ describe('ConnectionJQueueSdkWeb', () => {
                 option: { storageTokenKey: 'queue_token', storageConnectKey: 'connect_key' }
             };
             await ConnectionJQueueSdkWeb.init(config);
-            connectHandler = (mockSocket?.on as any).mock.calls.find(([event]: any) => event === 'connect')![1];
-            disconnectHandler = (mockSocket?.on as any).mock.calls.find(([event]: any) => event === 'disconnect')![1];
-            connectErrorHandler = (mockSocket?.on as any).mock.calls.find(([event]: any) => event === 'connect_error')![1];
+            connectHandler = (mockSocket.on as any)?.mock?.calls.find(([event]: any) => event === 'connect')![1];
+            disconnectHandler = (mockSocket.on as any)?.mock?.calls.find(([event]: any) => event === 'disconnect')![1];
+            connectErrorHandler = (mockSocket.on as any)?.mock?.calls.find(([event]: any) => event === 'connect_error')![1];
         });
 
         it('should log connection and start status emission', () => {
@@ -239,7 +239,7 @@ describe('ConnectionJQueueSdkWeb', () => {
                 popupConfig: {},
                 option: { storageTokenKey: 'queue_token', storageConnectKey: 'connect_key' }
             });
-            const statusHandler = (mockSocket?.on as any).mock.calls.find(([event]: any) => event === 'online-queue:status')![1];
+            const statusHandler = (mockSocket.on as any)?.mock?.calls.find(([event]: any) => event === 'online-queue:status')![1];
 
             const data = { uuid: '123', position: 50, status: OnlineQueueStatus.WAITING };
             statusHandler(data);
@@ -256,7 +256,7 @@ describe('ConnectionJQueueSdkWeb', () => {
                 popupConfig: {},
                 option: { storageTokenKey: 'queue_token', storageConnectKey: 'connect_key' }
             });
-            const statusHandler = (mockSocket?.on as any).mock.calls.find(([event]: any) => event === 'online-queue:status')![1];
+            const statusHandler = (mockSocket.on as any)?.mock?.calls.find(([event]: any) => event === 'online-queue:status')![1];
 
             statusHandler({ uuid: '123', position: 50, status: OnlineQueueStatus.WAITING });
             expect(listener).not.toHaveBeenCalled();
@@ -271,7 +271,7 @@ describe('ConnectionJQueueSdkWeb', () => {
                 popupConfig: {},
                 option: { storageTokenKey: 'queue_token', storageConnectKey: 'connect_key' }
             });
-            const statusHandler = (mockSocket?.on as any).mock.calls.find(([event]: any) => event === 'online-queue:status')![1];
+            const statusHandler = (mockSocket.on as any)?.mock?.calls.find(([event]: any) => event === 'online-queue:status')![1];
             const data = { uuid: '123', position: 50, status: OnlineQueueStatus.WAITING };
             statusHandler(data);
 

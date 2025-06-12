@@ -312,7 +312,7 @@ class ConnectionJQueueSdkWeb {
 
   public static async init({
     wsUrl,
-    apiUrl,
+    apiUrl = '',
     socketConfig = {},
     popupConfig = {},
     customEvents = {},

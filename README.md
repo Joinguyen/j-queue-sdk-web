@@ -14,7 +14,7 @@ For browser usage, include the Socket.IO client and the `j-queue-sdk-web` script
 
 ```html
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="https://unpkg.com/j-queue-sdk-web@<version>/dist/j-queue-sdk-web.js"></script>
+<script src="https://unpkg.com/j-queue-sdk-web@latest/dist/j-queue-sdk-web.js"></script>
 ```
 
 ## Usage
@@ -25,7 +25,7 @@ Initialize the SDK after including the scripts:
 
 ```html
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-<script src="https://unpkg.com/j-queue-sdk-web@<version>/dist/j-queue-sdk-web.js"></script>
+<script src="https://unpkg.com/j-queue-sdk-web@latest/dist/j-queue-sdk-web.js"></script>
 <script>
   try {
     // Handle default export
@@ -39,8 +39,6 @@ Initialize the SDK after including the scripts:
       },
       socketConfig: {
         query: {
-          app_id: 'XXXXX', // Replace with actual App ID
-          service_name: 'NEWS', // Replace with actual Service name
           connect_key: 'CONNECT_KEY' // Replace with actual connect key
         },
         transports: ['websocket'],
@@ -84,7 +82,7 @@ Initialize the SDK after including the scripts:
   - `storageTokenKey` (string): Key used to store the queue UUID in `sessionStorage` (default: `'queue_token'`).
   - `storageConnectKey` (string): Key used to store the `connect_key` from `socketConfig.query` in `sessionStorage` (default: `'connect_key'`).
 - `socketConfig` (object, optional): Socket.IO configuration options.
-  - `query` (object): Additional query parameters sent to the Socket.IO server (e.g., `{ app_id: 'XXXXX', service_name: 'NEWS', connect_key: 'CONNECT_KEY' }`).
+  - `query` (object): Additional query parameters sent to the Socket.IO server (e.g., `{ connect_key: 'CONNECT_KEY' }`).
   - `transports` (string[]): Transport methods (e.g., `['websocket']`). Defaults to `['websocket']`.
   - `reconnectionAttempts` (number): Number of reconnection attempts (e.g., `3`). Defaults to `3`.
   - `reconnectionDelay` (number): Delay between reconnection attempts in milliseconds (e.g., `1000`). Defaults to `1000`.
@@ -104,7 +102,7 @@ Initialize the SDK after including the scripts:
 - Handles queue status updates:
   - `ACTIVE`: Removes the popup, allows navigation, and emits `online-queue:check-disconnected` every 30 seconds to maintain connection status.
   - `WAITING`: Displays a customizable full-screen popup with the queue `position`, prevents navigation, and emits `online-queue:status` at an interval of 2000ms (adjusted by `(position / 100) * 1000`ms for positions >= 100).
-  - `EMPTY`: Logs an error to the console and clears any active intervals, taking no further UI or navigation actions.
+  - `EMPTY`: Logs an error (`'[j-queue-sdk-web] - Connect key does not exist!'`) to the console and clears any active intervals, taking no further UI or navigation actions.
 - Supports custom Socket.IO events via `customEvents`.
 - Provides utilities (`createPopup`, `removePopup`, `preventNavigation`, `allowNavigation`) for custom event handlers.
 - Handles connection errors and disconnections with reconnection logic (default: 3 attempts, 1000ms delay).
