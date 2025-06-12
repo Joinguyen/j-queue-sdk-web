@@ -313,7 +313,7 @@ class ConnectionJQueueSdkWeb {
     customEvents = {},
     option = { storageKey: this.CONFIG.STORAGE_KEY },
   }: InitConfig): Promise<{ disconnect: () => void }> {
-    if (!wsUrl || !apiUrl) throw new Error('Both wsUrl and apiUrl are required');
+    if (!wsUrl) throw new Error('Both wsUrl are required');
     if (typeof window === 'undefined') throw new Error('Socket.IO is not supported in this environment');
 
     this.state = { ...this.state, storageKey: option.storageKey ?? this.CONFIG.STORAGE_KEY, wsUrl, apiUrl, socketConfig };
@@ -340,7 +340,7 @@ class ConnectionJQueueSdkWeb {
   }
 
   private static disconnect(): void {
-    if (this.state.socket?.connected && this.state.queueStatus?.uuid && this.state.apiUrl) {
+    if (this.state.socket?.connected && this.state.queueStatus?.uuid) {
       this.sendLeaveRequest();
     }
     this.state.socket?.disconnect();
