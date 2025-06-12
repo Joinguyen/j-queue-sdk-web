@@ -24,6 +24,7 @@ type QueryParams = Record<string, string | number | undefined>;
 class ConnectionJQueueSdkWeb {
   private static readonly CONFIG = {
     TTL_INTERVAL: 2000,
+    MAX_TTL_INTERVAL: 60000,
     CHECK_DISCONNECTED_INTERVAL: 30000,
     STORAGE_TOKEN_KEY: 'queue_token',
     STORAGE_CONNECT_KEY: 'connect_key',
@@ -181,6 +182,9 @@ class ConnectionJQueueSdkWeb {
     return `
       <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
         <div style="padding: 20px; text-align: center;">
+         <p style="font-size: 16px; line-height: 1.5; margin: 0 0 20px 0; color: transparent;">
+            ${messages.MESS_1}<br>${messages.MESS_2}
+          </p>
           <div style="position: relative; width: 150px; height: 150px; margin: 20px auto;">
             <span style="position: absolute; inset: 0;" class="loader-jqueue_popup"></span>
             <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
@@ -193,7 +197,8 @@ class ConnectionJQueueSdkWeb {
   }
 
   private static getAdjustedPollInterval(position: number): number {
-    return position >= 100 ? this.CONFIG.TTL_INTERVAL + (position / 100) * 1000 : this.CONFIG.TTL_INTERVAL;
+    const pollTime = (position >= 100) ? this.CONFIG.TTL_INTERVAL + (position / 100) * 1000 : this.CONFIG.TTL_INTERVAL;
+    return (pollTime > this.CONFIG.MAX_TTL_INTERVAL ? this.CONFIG.MAX_TTL_INTERVAL : pollTime);
   }
 
   private static clearInterval(): void {

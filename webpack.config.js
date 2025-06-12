@@ -25,7 +25,5 @@ module.exports = {
     extensions: ['.ts', '.js']
   },
   devtool: 'source-map',
-  externals: {
-    'socket.io-client': 'io'
-  }
+  externals: {}
 };
