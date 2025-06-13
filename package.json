@@ -1,6 +1,6 @@
 {
   "name": "j-queue-sdk-web",
-  "version": "1.4.7",
+  "version": "2.0.0",
   "description": "A TypeScript package to check WebSocket connection status and control web access with a popup",
   "main": "dist/j-queue-sdk-web.js",
   "module": "dist/j-queue-sdk-web.js",
