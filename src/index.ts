@@ -1,6 +1,12 @@
 import { io, Socket } from 'socket.io-client';
 import { InitConfig, OnlineQueueStatus, PopupConfig } from './types';
 
+// Default WebSocket URLs
+const DEFAULT_WS_URLS = {
+  prod: 'https://api-extra-queue.pressai.kr',
+  dev: 'https://dev-api-extra-queue.pressai.kr',
+};
+
 interface ConnectionState {
   socket: Socket | null;
   popupEl: HTMLElement | null;
@@ -103,13 +109,13 @@ class ConnectionJQueueSdkWeb {
   private static statusListeners: Array<(status: NonNullable<ConnectionState['queueStatus']>) => void> = [];
 
   private static log(message: string, type: 'info' | 'warn' | 'error' = 'info', error?: unknown): void {
-    const prefix = '[J-Queue]';
+    const prefix = `[J-Queue]`;
     const logMethod = { error: console.error, warn: console.warn, info: console.log }[type];
     logMethod(`${prefix} ${message}`, error ?? '');
   }
 
   private static injectStyles(popupConfig?: PopupConfig): void {
-    if (typeof document === 'undefined' || document.querySelector('style[data-jqueue-styles]')) return;
+    if (typeof document === 'undefined' || document.querySelector('style[data-styles]')) return;
     const styleEl = document.createElement('style');
     styleEl.dataset.jqueueStyles = '';
     styleEl.textContent = this.CONFIG.STYLES.LOADER(popupConfig);
@@ -182,7 +188,7 @@ class ConnectionJQueueSdkWeb {
     return `
       <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
         <div style="padding: 20px; text-align: center;">
-         <p style="font-size: 16px; line-height: 1.5; margin: 0 0 20px 0; color: transparent;">
+          <p style="font-size: 16px; line-height: 1.5; margin: 0 0 20px 0; color: transparent;">
             ${messages.MESS_1}<br>${messages.MESS_2}
           </p>
           <div style="position: relative; width: 150px; height: 150px; margin: 20px auto;">
@@ -197,8 +203,8 @@ class ConnectionJQueueSdkWeb {
   }
 
   private static getAdjustedPollInterval(position: number): number {
-    const pollTime = (position >= 100) ? this.CONFIG.TTL_INTERVAL + (position / 100) * 1000 : this.CONFIG.TTL_INTERVAL;
-    return (pollTime > this.CONFIG.MAX_TTL_INTERVAL ? this.CONFIG.MAX_TTL_INTERVAL : pollTime);
+    const pollTime = position >= 100 ? this.CONFIG.TTL_INTERVAL + (position / 100) * 1000 : this.CONFIG.TTL_INTERVAL;
+    return pollTime > this.CONFIG.MAX_TTL_INTERVAL ? this.CONFIG.MAX_TTL_INTERVAL : pollTime;
   }
 
   private static clearInterval(): void {
@@ -293,7 +299,7 @@ class ConnectionJQueueSdkWeb {
 
     socket.on('connect', () => {
       this.log('Socket.IO connected');
-      this.removePopup(); // Remove loading popup if present
+      this.removePopup();
       this.startStatusEmission(currentTtlInterval.value);
     });
 
@@ -314,12 +320,15 @@ class ConnectionJQueueSdkWeb {
 
     socket.on('connect_error', (error) => {
       this.log('Socket.IO connection error', 'error', error);
-      this.removePopup(); // Remove loading popup on connection error
+      this.removePopup();
     });
 
     socket.on('disconnect', (reason) => {
       this.log(`Socket.IO disconnected: ${reason}`, 'warn');
       this.clearInterval();
+      if (this.state.storageTokenKey && typeof sessionStorage !== 'undefined' && !!sessionStorage.getItem(this.state.storageTokenKey)) {
+        window?.location?.reload();
+      }
     });
 
     if (this.state.storageConnectKey && typeof sessionStorage !== 'undefined') {
@@ -327,29 +336,46 @@ class ConnectionJQueueSdkWeb {
     }
   }
 
+  /**
+   * Adds a listener for queue status updates.
+   * @param listener Callback function to receive status updates.
+   */
   public static addStatusListener(listener: (status: NonNullable<ConnectionState['queueStatus']>) => void): void {
     this.statusListeners.push(listener);
   }
 
+  /**
+   * Removes a queue status listener.
+   * @param listener Callback function to remove.
+   */
   public static removeStatusListener(listener: (status: NonNullable<ConnectionState['queueStatus']>) => void): void {
     this.statusListeners = this.statusListeners.filter((l) => l !== listener);
   }
 
+  /**
+   * Gets the current queue status.
+   * @returns Current queue status or null if not initialized.
+   */
   public static getQueueStatus(): ConnectionState['queueStatus'] {
     return this.state.queueStatus;
   }
 
+
+  /**
+   * Initializes the J-Queue SDK with the provided configuration.
+   * @param config Configuration for the SDK.
+   * @returns Promise resolving to an object with a disconnect method.
+   */
   public static async init({
-    wsUrl,
+    wsUrl = DEFAULT_WS_URLS.prod,
     apiUrl = '',
     socketConfig = {},
     popupConfig = {
-      isShowLoadingOnConnect: false
+      isShowLoadingOnConnect: false,
     },
     customEvents = {},
     option = { storageTokenKey: this.CONFIG.STORAGE_TOKEN_KEY, storageConnectKey: this.CONFIG.STORAGE_CONNECT_KEY },
   }: InitConfig): Promise<{ disconnect: () => void }> {
-    if (!wsUrl) throw new Error('Both wsUrl are required');
     if (typeof window === 'undefined') throw new Error('Socket.IO is not supported in this environment');
 
     this.state = {
@@ -363,7 +389,6 @@ class ConnectionJQueueSdkWeb {
     this.injectStyles(popupConfig);
 
     try {
-      // Show loading popup if isShowLoadingOnConnect is true
       if (popupConfig?.isShowLoadingOnConnect) {
         const content = this.getLoadingPopupContent(popupConfig.language ?? 'ko', popupConfig);
         this.createPopup(content, popupConfig.style);
@@ -373,8 +398,8 @@ class ConnectionJQueueSdkWeb {
       return { disconnect: () => this.disconnect() };
     } catch (error) {
       this.log('Initialization failed', 'error', error);
-      this.removePopup(); // Remove loading popup on init failure
-      return { disconnect: () => this.disconnect() };
+      this.removePopup();
+      throw error;
     }
   }
 
@@ -409,17 +434,99 @@ class ConnectionJQueueSdkWeb {
     this.state.socket?.disconnect();
     this.cleanup();
   }
-}
 
-declare global {
-  interface Window {
-    ConnectionJQueueSdkWeb: typeof ConnectionJQueueSdkWeb;
+  /**
+   * Initializes the SDK using attributes from the script tag.
+   * Automatically called when the script is loaded with data-* attributes.
+   * Supported attributes:
+   * - data-ws-url: WebSocket URL (optional; if not provided, determined by data-mode).
+   * - data-mode: Environment mode ('dev' or 'prod'; optional, defaults to 'prod').
+   * - data-api-url: API URL for queue operations.
+   * - data-storage-token-key: sessionStorage key for queue token.
+   * - data-storage-connect-key: sessionStorage key for connect key.
+   * - data-connect-key: Connect key for socket query.
+   * - data-show-loading: Show loading popup on connect ('true'/'false').
+   * - data-language: Language for popup ('en'/'ko').
+   * - data-text-color: Text color for popup.
+   * - data-loader-gradient-start: Starting color for the loader gradient.
+   * - data-loader-gradient-end: Ending color for the loader gradient.
+   */
+  public static initFromScriptAttributes(): void {
+    if (typeof document === 'undefined') return;
+
+    const scripts = document.getElementsByTagName('script');
+    let sdkScript: HTMLScriptElement | null = null;
+
+    for (const script of scripts) {
+      if (script.src.includes('j-queue-sdk-web')) {
+        sdkScript = script;
+        break;
+      }
+    }
+
+    if (!sdkScript) {
+      this.log('Could not find J-Queue SDK script tag', 'error');
+      return;
+    }
+
+    // Extract attributes
+    const wsUrlAttr = sdkScript.getAttribute('data-ws-url');
+    const mode = sdkScript.getAttribute('data-mode') as 'dev' | 'prod' | null;
+    const wsUrl = wsUrlAttr || (mode === 'dev' ? DEFAULT_WS_URLS.dev : DEFAULT_WS_URLS.prod);
+    const apiUrl = sdkScript.getAttribute('data-api-url') || '';
+    const storageTokenKey = sdkScript.getAttribute('data-storage-token-key') || this.CONFIG.STORAGE_TOKEN_KEY;
+    const storageConnectKey = sdkScript.getAttribute('data-storage-connect-key') || this.CONFIG.STORAGE_CONNECT_KEY;
+    const connectKey = sdkScript.getAttribute('data-connect-key');
+    const isShowLoadingOnConnect = sdkScript.getAttribute('data-show-loading') === 'true';
+    const language = sdkScript.getAttribute('data-language') as 'en' | 'ko' | undefined;
+    const textColor = sdkScript.getAttribute('data-text-color');
+    const loaderGradientStart = sdkScript.getAttribute('data-loader-gradient-start');
+    const loaderGradientEnd = sdkScript.getAttribute('data-loader-gradient-end');
+
+
+    const config: InitConfig = {
+      wsUrl,
+      apiUrl,
+      option: {
+        storageTokenKey,
+        storageConnectKey,
+      },
+      socketConfig: {
+        query: connectKey ? { connect_key: connectKey } : {},
+      },
+      popupConfig: {
+        isShowLoadingOnConnect,
+        ...(language && { language }),
+        ...(textColor && { textColor }),
+        ...(loaderGradientStart && { loaderGradientStart }),
+        ...(loaderGradientEnd && { loaderGradientEnd }),
+      },
+    };
+
+    this.init(config).catch((error) => {
+      this.log('Auto-initialization from script attributes failed', 'error', error);
+    });
   }
 }
 
-if (typeof window !== 'undefined') {
-  window.ConnectionJQueueSdkWeb = ConnectionJQueueSdkWeb;
+// Properly extend the Window interface
+declare global {
+  interface Window {
+    ConnectionJQueueSdkWeb?: typeof ConnectionJQueueSdkWeb;
+  }
 }
+
+// Initialize in browser environment
+(function () {
+  if (typeof window !== 'undefined') {
+    window.ConnectionJQueueSdkWeb = ConnectionJQueueSdkWeb;
+    try {
+      ConnectionJQueueSdkWeb.initFromScriptAttributes();
+    } catch (error) {
+      console.error(`[J-Queue] Failed to initialize from script attributes`, error);
+    }
+  }
+})();
 
 export default ConnectionJQueueSdkWeb;
 export type { InitConfig, OnlineQueueStatus, PopupConfig } from './types';
