@@ -1,4 +1,4 @@
-# J-Queue SDK Web
+## J-Queue SDK Web
 
 The J-Queue SDK Web is a JavaScript library for managing online queue systems in web applications. It provides a seamless integration with a WebSocket-based queue service, displaying a customizable popup UI to inform users about their queue status.
 
@@ -169,4 +169,3 @@ MIT
 
 - **GitHub**: [https://github.com/joinguyen/j-queue-sdk-web](https://github.com/joinguyen/j-queue-sdk-web)
 - **Issues**: [https://github.com/joing-sdk-web/j-queue-sdk-web/issues](https://github.com/joing-sdk/j-queue-sdk-web/issues)
-</xaiSchema>
