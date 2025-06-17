@@ -43,7 +43,8 @@ export interface PopupConfig {
 export enum OnlineQueueStatus {
     WAITING = 1,
     ACTIVE = 2,
-    EMPTY = 3
+    EMPTY = 3,
+    EXPIRED = 4
 }
 
 /**

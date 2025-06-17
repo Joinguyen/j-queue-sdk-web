@@ -214,6 +214,10 @@ class ConnectionJQueueSdkWeb {
     }
   }
 
+  private static reloadPage(): void {
+    window.location.reload();
+  }
+
   private static startStatusEmission(interval: number): void {
     this.clearInterval();
     this.ttlInterval = setInterval(() => {
@@ -274,8 +278,11 @@ class ConnectionJQueueSdkWeb {
         this.toggleNavigation(true);
         break;
       case OnlineQueueStatus.EMPTY:
-        alert('[J Queue] - Connect key does not exist!');
+        alert(`[J Queue] - ${popupConfig?.language === 'en' ? 'Connect key does not exist!' : '연결 키가 존재하지 않습니다!'}`);
         this.clearInterval();
+      case OnlineQueueStatus.EXPIRED:
+        alert(`[J Queue] - ${popupConfig?.language === 'en' ? 'You have waited too long!' : '너무 오래 기다리셨습니다!'}`);
+        this.reloadPage();
         break;
     }
   }
