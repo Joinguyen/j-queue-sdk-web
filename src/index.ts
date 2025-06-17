@@ -278,10 +278,10 @@ class ConnectionJQueueSdkWeb {
         this.toggleNavigation(true);
         break;
       case OnlineQueueStatus.EMPTY:
-        alert(`[J Queue] - ${popupConfig?.language === 'en' ? 'Connect key does not exist!' : '연결 키가 존재하지 않습니다!'}`);
+        alert(`${popupConfig?.language === 'en' ? 'Connect key does not exist!' : '연결 키가 존재하지 않습니다!'}`);
         this.clearInterval();
       case OnlineQueueStatus.EXPIRED:
-        alert(`[J Queue] - ${popupConfig?.language === 'en' ? 'You have waited too long!' : '너무 오래 기다리셨습니다!'}`);
+        alert(`${popupConfig?.language === 'en' ? 'The request was not processed due to a timeout.\nPlease try again later.' : '대기 시간 초과로 인해 처리되지 않았습니다. \n잠시 후 다시 시도해 주세요.'}`);
         this.reloadPage();
         break;
     }
