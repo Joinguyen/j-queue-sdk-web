@@ -33,7 +33,8 @@ class ConnectionJQueueSdkWeb {
     MAX_TTL_INTERVAL: 60000,
     CHECK_DISCONNECTED_INTERVAL: 30000,
     STORAGE_TOKEN_KEY: 'queue_token',
-    STORAGE_CONNECT_KEY: 'connect_key',
+    STORAGE_CONNECT_KEY: 'queue_connect_key',
+    STORAGE_LANGUAGE_KEY: 'queue_language',
     API_ENDPOINTS: { LEAVE: '/leave' },
     MESSAGES: {
       en: {
@@ -454,6 +455,7 @@ class ConnectionJQueueSdkWeb {
    * - data-connect-key: Connect key for socket query.
    * - data-show-loading: Show loading popup on connect ('true'/'false').
    * - data-language: Language for popup ('en'/'ko').
+   * - data-storage-language-key: Language for popup ('en'/'ko').
    * - data-text-color: Text color for popup.
    * - data-loader-gradient-start: Starting color for the loader gradient.
    * - data-loader-gradient-end: Ending color for the loader gradient.
@@ -483,9 +485,10 @@ class ConnectionJQueueSdkWeb {
     const apiUrl = sdkScript.getAttribute('data-api-url') || '';
     const storageTokenKey = sdkScript.getAttribute('data-storage-token-key') || this.CONFIG.STORAGE_TOKEN_KEY;
     const storageConnectKey = sdkScript.getAttribute('data-storage-connect-key') || this.CONFIG.STORAGE_CONNECT_KEY;
+    const storageLanguageKey = sdkScript.getAttribute('data-storage-language-key') || this.CONFIG.STORAGE_LANGUAGE_KEY;
     const connectKey = sdkScript.getAttribute('data-connect-key');
     const isShowLoadingOnConnect = sdkScript.getAttribute('data-show-loading') === 'true';
-    const language = sdkScript.getAttribute('data-language') as 'en' | 'ko' | undefined;
+    const language = (sdkScript.getAttribute('data-language') || localStorage?.getItem(storageLanguageKey) || 'ko') as 'en' | 'ko' | undefined;
     const textColor = sdkScript.getAttribute('data-text-color');
     const loaderGradientStart = sdkScript.getAttribute('data-loader-gradient-start');
     const loaderGradientEnd = sdkScript.getAttribute('data-loader-gradient-end');
