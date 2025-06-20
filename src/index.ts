@@ -488,7 +488,7 @@ class ConnectionJQueueSdkWeb {
     const storageLanguageKey = sdkScript.getAttribute('data-storage-language-key') || this.CONFIG.STORAGE_LANGUAGE_KEY;
     const connectKey = sdkScript.getAttribute('data-connect-key');
     const isShowLoadingOnConnect = sdkScript.getAttribute('data-show-loading') === 'true';
-    const language = (sdkScript.getAttribute('data-language') || localStorage?.getItem(storageLanguageKey) || 'ko') as 'en' | 'ko' | undefined;
+    const language = (sdkScript.getAttribute('data-language') || localStorage?.getItem(storageLanguageKey) || (navigator?.language?.split('-')[0] === 'ko' ? 'ko' : 'en')) as 'en' | 'ko' | undefined;
     const textColor = sdkScript.getAttribute('data-text-color');
     const loaderGradientStart = sdkScript.getAttribute('data-loader-gradient-start');
     const loaderGradientEnd = sdkScript.getAttribute('data-loader-gradient-end');
