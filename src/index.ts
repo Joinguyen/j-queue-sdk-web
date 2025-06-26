@@ -3,8 +3,8 @@ import { InitConfig, OnlineQueueStatus, PopupConfig } from './types';
 
 // Default WebSocket URLs
 const DEFAULT_WS_URLS = {
-  prod: 'https://api-extra-queue.pressai.kr',
-  dev: 'https://dev-api-extra-queue.pressai.kr',
+  prod: 'https://api-queue.pressai.kr',
+  dev: 'https://dev-api-queue.pressai.kr',
 };
 
 interface ConnectionState {
